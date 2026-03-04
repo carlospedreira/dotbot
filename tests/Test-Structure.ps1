@@ -373,8 +373,8 @@ if (-not $dotbotInstalled) {
                 -Path (Join-Path $botDir4 "prompts\workflows\98-analyse-task.md")
             Assert-PathExists -Name "-Profile multi-repo: 00-kickstart-interview.md (override)" `
                 -Path (Join-Path $botDir4 "prompts\workflows\00-kickstart-interview.md")
-            Assert-PathExists -Name "-Profile multi-repo: 05-post-research-review.md (new)" `
-                -Path (Join-Path $botDir4 "prompts\workflows\05-post-research-review.md")
+            Assert-PathExists -Name "-Profile multi-repo: 04-post-research-review.md (new)" `
+                -Path (Join-Path $botDir4 "prompts\workflows\04-post-research-review.md")
             Assert-PathExists -Name "-Profile multi-repo: atlassian.md (new research dir)" `
                 -Path (Join-Path $botDir4 "prompts\research\atlassian.md")
             Assert-PathExists -Name "-Profile multi-repo: repo-clone/script.ps1 (new tool)" `

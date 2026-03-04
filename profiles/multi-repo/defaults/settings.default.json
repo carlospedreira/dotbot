@@ -135,7 +135,7 @@
       {
         "id": "plan-research",
         "name": "Research Tasks",
-        "workflow": "03-plan-research.md",
+        "workflow": "02-plan-research.md",
         "required_outputs_dir": "tasks/todo",
         "min_output_count": 1,
         "commit_paths": ["workspace/tasks/", "workspace/product/"],
@@ -149,7 +149,7 @@
       {
         "id": "create-deep-dives",
         "name": "Deep Dive Tasks",
-        "workflow": "04-create-deep-dive-tasks.md",
+        "workflow": "03-create-deep-dive-tasks.md",
         "required_outputs_dir": "tasks/todo",
         "min_output_count": 1,
         "condition": "file_exists:workspace/product/research-repos.md",
@@ -166,7 +166,7 @@
         "id": "post-research-review",
         "name": "Post-Research Review",
         "type": "llm",
-        "workflow": "05-post-research-review.md",
+        "workflow": "04-post-research-review.md",
         "required_outputs": ["research-summary.md"],
         "commit_paths": ["workspace/product/"],
         "commit_message": "chore(kickstart): post-research review"
