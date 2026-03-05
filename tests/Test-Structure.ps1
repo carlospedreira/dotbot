@@ -286,7 +286,10 @@ if (-not $dotbotInstalled) {
             $dotnetFiles = Get-ChildItem -Path $dotnetProfile -Recurse -File | Where-Object { $_.Name -ne "profile-init.ps1" -and $_.Name -ne "profile.yaml" }
             if ($dotnetFiles.Count -gt 0) {
                 $firstFile = $dotnetFiles[0]
-                $relativePath = $firstFile.FullName.Substring($dotnetProfile.Length + 1)
+                $relativePath = [System.IO.Path]::GetRelativePath(
+                    [System.IO.Path]::GetFullPath($dotnetProfile),
+                    [System.IO.Path]::GetFullPath($firstFile.FullName)
+                ) -replace '/', '\'
                 $expectedPath = Join-Path $botDir3 $relativePath
                 Assert-PathExists -Name "-Profile: dotnet overlay file present ($relativePath)" -Path $expectedPath
             }
@@ -298,25 +301,25 @@ if (-not $dotbotInstalled) {
         Write-TestResult -Name "-Profile dotnet tests" -Status Skip -Message "dotnet profile not found at $dotnetProfile"
     }
 
-    # --- Init with -Profile multi-repo,dotnet-blazor (taxonomy + extends) ---
+    # --- Init with -Profile kickstart-via-jira,dotnet-blazor (taxonomy + extends) ---
     Write-Host ""
     Write-Host "  INIT -PROFILE (workflow + stack with extends)" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $multiRepoProfile = Join-Path $dotbotDir "profiles\multi-repo"
+    $kickstartViaJiraProfile = Join-Path $dotbotDir "profiles\kickstart-via-jira"
     $dotnetBlazorProfile = Join-Path $dotbotDir "profiles\dotnet-blazor"
-    if ((Test-Path $multiRepoProfile) -and (Test-Path $dotnetBlazorProfile)) {
+    if ((Test-Path $kickstartViaJiraProfile) -and (Test-Path $dotnetBlazorProfile)) {
         $testProjectCombo = New-TestProject
         try {
             Push-Location $testProjectCombo
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile "multi-repo,dotnet-blazor" 2>&1 | Out-Null
+            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile "kickstart-via-jira,dotnet-blazor" 2>&1 | Out-Null
             Pop-Location
 
             $botDirCombo = Join-Path $testProjectCombo ".bot"
             Assert-PathExists -Name "Combo: .bot created" -Path $botDirCombo
 
-            # Multi-repo overlay applied (workflow override)
-            Assert-PathExists -Name "Combo: multi-repo 98-analyse-task.md present" `
+            # kickstart-via-jira overlay applied (workflow override)
+            Assert-PathExists -Name "Combo: kickstart-via-jira 98-analyse-task.md present" `
                 -Path (Join-Path $botDirCombo "prompts\workflows\98-analyse-task.md")
 
             # dotnet auto-included via extends (dotnet-blazor extends dotnet)
@@ -327,12 +330,12 @@ if (-not $dotbotInstalled) {
             $blazorSkillCheck = Join-Path $botDirCombo "prompts\skills\blazor-component-design\SKILL.md"
             Assert-PathExists -Name "Combo: dotnet-blazor skill present" -Path $blazorSkillCheck
 
-            # Settings: profile should be 'multi-repo' and stacks should include dotnet + dotnet-blazor
+            # Settings: profile should be 'kickstart-via-jira' and stacks should include dotnet + dotnet-blazor
             $settingsCombo = Join-Path $botDirCombo "defaults\settings.default.json"
             if (Test-Path $settingsCombo) {
                 $sCombo = Get-Content $settingsCombo -Raw | ConvertFrom-Json
-                Assert-Equal -Name "Combo: profile is 'multi-repo'" `
-                    -Expected "multi-repo" -Actual $sCombo.profile
+                Assert-Equal -Name "Combo: profile is 'kickstart-via-jira'" `
+                    -Expected "kickstart-via-jira" -Actual $sCombo.profile
                 Assert-True -Name "Combo: stacks includes 'dotnet'" `
                     -Condition ("dotnet" -in @($sCombo.stacks)) `
                     -Message "Expected 'dotnet' in stacks array, got: $($sCombo.stacks -join ', ')"
@@ -352,79 +355,79 @@ if (-not $dotbotInstalled) {
         Write-TestResult -Name "Combo profile tests" -Status Skip -Message "Required profiles not found"
     }
 
-    # --- Init with -Profile multi-repo ---
+    # --- Init with -Profile kickstart-via-jira ---
     Write-Host ""
-    Write-Host "  INIT -PROFILE multi-repo" -ForegroundColor Cyan
+    Write-Host "  INIT -PROFILE kickstart-via-jira" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $multiRepoProfile = Join-Path $dotbotDir "profiles\multi-repo"
-    if (Test-Path $multiRepoProfile) {
+    $kickstartViaJiraProfile = Join-Path $dotbotDir "profiles\kickstart-via-jira"
+    if (Test-Path $kickstartViaJiraProfile) {
         $testProject4 = New-TestProject
         try {
             Push-Location $testProject4
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile multi-repo 2>&1 | Out-Null
+            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile kickstart-via-jira 2>&1 | Out-Null
             Pop-Location
 
             $botDir4 = Join-Path $testProject4 ".bot"
-            Assert-PathExists -Name "-Profile multi-repo: .bot created" -Path $botDir4
+            Assert-PathExists -Name "-Profile kickstart-via-jira: .bot created" -Path $botDir4
 
             # Key overlay files
-            Assert-PathExists -Name "-Profile multi-repo: 98-analyse-task.md (override)" `
+            Assert-PathExists -Name "-Profile kickstart-via-jira: 98-analyse-task.md (override)" `
                 -Path (Join-Path $botDir4 "prompts\workflows\98-analyse-task.md")
-            Assert-PathExists -Name "-Profile multi-repo: 00-kickstart-interview.md (override)" `
+            Assert-PathExists -Name "-Profile kickstart-via-jira: 00-kickstart-interview.md (override)" `
                 -Path (Join-Path $botDir4 "prompts\workflows\00-kickstart-interview.md")
-            Assert-PathExists -Name "-Profile multi-repo: 04-post-research-review.md (new)" `
+            Assert-PathExists -Name "-Profile kickstart-via-jira: 04-post-research-review.md (new)" `
                 -Path (Join-Path $botDir4 "prompts\workflows\04-post-research-review.md")
-            Assert-PathExists -Name "-Profile multi-repo: atlassian.md (new research dir)" `
+            Assert-PathExists -Name "-Profile kickstart-via-jira: atlassian.md (new research dir)" `
                 -Path (Join-Path $botDir4 "prompts\research\atlassian.md")
-            Assert-PathExists -Name "-Profile multi-repo: repo-clone/script.ps1 (new tool)" `
+            Assert-PathExists -Name "-Profile kickstart-via-jira: repo-clone/script.ps1 (new tool)" `
                 -Path (Join-Path $botDir4 "systems\mcp\tools\repo-clone\script.ps1")
-            Assert-PathExists -Name "-Profile multi-repo: settings.default.json (replacement)" `
+            Assert-PathExists -Name "-Profile kickstart-via-jira: settings.default.json (replacement)" `
                 -Path (Join-Path $botDir4 "defaults\settings.default.json")
 
             # profile-init.ps1 should NOT be copied to .bot/
-            Assert-PathNotExists -Name "-Profile multi-repo: profile-init.ps1 not copied" `
+            Assert-PathNotExists -Name "-Profile kickstart-via-jira: profile-init.ps1 not copied" `
                 -Path (Join-Path $botDir4 "profile-init.ps1")
 
             # Verify hook config merge: 03-research-completeness.ps1 present
             $verifyConfig4 = Join-Path $botDir4 "hooks\verify\config.json"
-            Assert-ValidJson -Name "-Profile multi-repo: verify config.json is valid JSON" -Path $verifyConfig4
+            Assert-ValidJson -Name "-Profile kickstart-via-jira: verify config.json is valid JSON" -Path $verifyConfig4
             if (Test-Path $verifyConfig4) {
                 $config4 = Get-Content $verifyConfig4 -Raw | ConvertFrom-Json
                 $scriptNames4 = $config4.scripts | ForEach-Object { $_.name }
-                Assert-True -Name "-Profile multi-repo: verify config has 03-research-completeness.ps1" `
+                Assert-True -Name "-Profile kickstart-via-jira: verify config has 03-research-completeness.ps1" `
                     -Condition ("03-research-completeness.ps1" -in $scriptNames4) `
                     -Message "03-research-completeness.ps1 not found in merged config"
             }
 
             # Settings validation
             $settingsPath4 = Join-Path $botDir4 "defaults\settings.default.json"
-            Assert-ValidJson -Name "-Profile multi-repo: settings is valid JSON" -Path $settingsPath4
+            Assert-ValidJson -Name "-Profile kickstart-via-jira: settings is valid JSON" -Path $settingsPath4
             if (Test-Path $settingsPath4) {
                 $settings4 = Get-Content $settingsPath4 -Raw | ConvertFrom-Json
 
-                Assert-True -Name "-Profile multi-repo: task_categories has 5 values" `
+                Assert-True -Name "-Profile kickstart-via-jira: task_categories has 5 values" `
                     -Condition ($settings4.task_categories.Count -eq 5) `
                     -Message "Expected 5 categories, got $($settings4.task_categories.Count)"
 
-                Assert-Equal -Name "-Profile multi-repo: branch_prefix is 'initiative'" `
+                Assert-Equal -Name "-Profile kickstart-via-jira: branch_prefix is 'initiative'" `
                     -Expected "initiative" -Actual $settings4.azure_devops.branch_prefix
 
-                Assert-Equal -Name "-Profile multi-repo: max_pages_to_read is 10" `
+                Assert-Equal -Name "-Profile kickstart-via-jira: max_pages_to_read is 10" `
                     -Expected 10 -Actual $settings4.atlassian.max_pages_to_read
 
                 # Verify kickstart phases include jira-context as first phase
                 $phaseIds = $settings4.kickstart.phases | ForEach-Object { $_.id }
-                Assert-Equal -Name "-Profile multi-repo: first phase is 'jira-context'" `
+                Assert-Equal -Name "-Profile kickstart-via-jira: first phase is 'jira-context'" `
                     -Expected "jira-context" -Actual $phaseIds[0]
 
                 # Verify post-research-review phase exists as LLM type (not interview)
                 $reviewPhase = $settings4.kickstart.phases | Where-Object { $_.id -eq 'post-research-review' }
-                Assert-True -Name "-Profile multi-repo: post-research-review phase exists" `
+                Assert-True -Name "-Profile kickstart-via-jira: post-research-review phase exists" `
                     -Condition ($null -ne $reviewPhase) `
                     -Message "post-research-review phase not found in kickstart.phases"
                 if ($reviewPhase) {
-                    Assert-Equal -Name "-Profile multi-repo: post-research-review type is 'llm'" `
+                    Assert-Equal -Name "-Profile kickstart-via-jira: post-research-review type is 'llm'" `
                         -Expected "llm" -Actual $reviewPhase.type
                 }
             }
@@ -434,22 +437,58 @@ if (-not $dotbotInstalled) {
             if (Test-Path $samplesDir4) {
                 $sampleFiles4 = Get-ChildItem -Path $samplesDir4 -Filter "*.json" -ErrorAction SilentlyContinue
                 foreach ($sample in $sampleFiles4) {
-                    Assert-ValidJson -Name "-Profile multi-repo: sample $($sample.Name) is valid JSON" -Path $sample.FullName
+                    Assert-ValidJson -Name "-Profile kickstart-via-jira: sample $($sample.Name) is valid JSON" -Path $sample.FullName
                 }
             }
 
             # All .ps1 files in the profile source are valid PowerShell
-            $allPs1Files = Get-ChildItem -Path $multiRepoProfile -Filter "*.ps1" -Recurse
+            $allPs1Files = Get-ChildItem -Path $kickstartViaJiraProfile -Filter "*.ps1" -Recurse
             foreach ($ps1 in $allPs1Files) {
-                $relPath = $ps1.FullName.Substring($multiRepoProfile.Length + 1)
-                Assert-ValidPowerShell -Name "-Profile multi-repo: $relPath valid syntax" -Path $ps1.FullName
+                $relPath = [System.IO.Path]::GetRelativePath(
+                    [System.IO.Path]::GetFullPath($kickstartViaJiraProfile),
+                    [System.IO.Path]::GetFullPath($ps1.FullName)
+                ) -replace '/', '\'
+                Assert-ValidPowerShell -Name "-Profile kickstart-via-jira: $relPath valid syntax" -Path $ps1.FullName
             }
 
         } finally {
             Remove-TestProject -Path $testProject4
         }
     } else {
-        Write-TestResult -Name "-Profile multi-repo tests" -Status Skip -Message "multi-repo profile not found at $multiRepoProfile"
+        Write-TestResult -Name "-Profile kickstart-via-jira tests" -Status Skip -Message "kickstart-via-jira profile not found at $kickstartViaJiraProfile"
+    }
+
+    # --- Deprecated alias: -Profile multi-repo ---
+    Write-Host ""
+    Write-Host "  INIT -PROFILE ALIAS (deprecated)" -ForegroundColor Cyan
+    Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    if (Test-Path $kickstartViaJiraProfile) {
+        $testProjectAlias = New-TestProject
+        try {
+            Push-Location $testProjectAlias
+            $aliasOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile multi-repo 2>&1
+            Pop-Location
+
+            $aliasBotDir = Join-Path $testProjectAlias ".bot"
+            Assert-PathExists -Name "-Profile alias multi-repo: .bot created" -Path $aliasBotDir
+
+            $aliasSettingsPath = Join-Path $aliasBotDir "defaults\settings.default.json"
+            if (Test-Path $aliasSettingsPath) {
+                $aliasSettings = Get-Content $aliasSettingsPath -Raw | ConvertFrom-Json
+                Assert-Equal -Name "-Profile alias multi-repo resolves to kickstart-via-jira" `
+                    -Expected "kickstart-via-jira" -Actual $aliasSettings.profile
+            }
+
+            $aliasOutputText = $aliasOutput | Out-String
+            Assert-True -Name "-Profile alias multi-repo shows deprecation warning" `
+                -Condition ($aliasOutputText -match "deprecated" -and $aliasOutputText -match "kickstart-via-jira") `
+                -Message "Expected deprecation warning for multi-repo alias"
+        } finally {
+            Remove-TestProject -Path $testProjectAlias
+        }
+    } else {
+        Write-TestResult -Name "-Profile alias tests" -Status Skip -Message "kickstart-via-jira profile not found at $kickstartViaJiraProfile"
     }
 
     # --- Verification Hook: 03-research-completeness.ps1 ---
@@ -457,13 +496,13 @@ if (-not $dotbotInstalled) {
     Write-Host "  VERIFICATION HOOK" -ForegroundColor Cyan
     Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-    $hookScript = Join-Path $dotbotDir "profiles\multi-repo\hooks\verify\03-research-completeness.ps1"
+    $hookScript = Join-Path $dotbotDir "profiles\kickstart-via-jira\hooks\verify\03-research-completeness.ps1"
     if (Test-Path $hookScript) {
         $testProject5 = New-TestProject
         try {
-            # Init with multi-repo profile
+            # Init with kickstart-via-jira profile
             Push-Location $testProject5
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile multi-repo 2>&1 | Out-Null
+            & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile kickstart-via-jira 2>&1 | Out-Null
             Pop-Location
 
             $botDir5 = Join-Path $testProject5 ".bot"
@@ -607,7 +646,10 @@ foreach ($script in $allScripts) {
     $content = Get-Content $script.FullName -Raw
     if ($content -match $toolSourcePattern) {
         $setsGlobal = $content -match $globalSetPattern
-        $relativePath = $script.FullName.Substring($profilesDir.Length + 1)
+        $relativePath = [System.IO.Path]::GetRelativePath(
+            [System.IO.Path]::GetFullPath($profilesDir),
+            [System.IO.Path]::GetFullPath($script.FullName)
+        ) -replace '/', '\'
         Assert-True -Name "$relativePath sets DotbotProjectRoot" `
             -Condition $setsGlobal `
             -Message "File dot-sources tool scripts but never sets `$global:DotbotProjectRoot"

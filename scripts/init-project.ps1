@@ -16,7 +16,7 @@
     Stacks may declare 'extends: <parent>' to auto-include a parent stack.
 
 .PARAMETER Profile
-    Profile(s) to install (e.g., 'dotnet', 'multi-repo,dotnet-blazor').
+    Profile(s) to install (e.g., 'dotnet', 'kickstart-via-jira,dotnet-blazor').
     Accepts a comma-separated string or multiple -Profile values.
 
 .PARAMETER Force
@@ -34,8 +34,8 @@
     Installs base default + dotnet stack.
 
 .EXAMPLE
-    init-project.ps1 -Profile multi-repo,dotnet-blazor,dotnet-ef
-    Installs default -> multi-repo (workflow) -> dotnet (auto) -> dotnet-blazor -> dotnet-ef.
+    init-project.ps1 -Profile kickstart-via-jira,dotnet-blazor,dotnet-ef
+    Installs default -> kickstart-via-jira (workflow) -> dotnet (auto) -> dotnet-blazor -> dotnet-ef.
 #>
 
 [CmdletBinding()]
@@ -246,15 +246,45 @@ Write-Success "Created .bot directory structure"
 # ---------------------------------------------------------------------------
 $ProfilesDir = Join-Path $DotbotBase "profiles"
 
+# Backward-compat aliases (deprecated names -> canonical profile names)
+$profileAliases = @{
+    "multi-repo" = "kickstart-via-jira"
+}
+
 # Normalise -Profile input: accept comma-separated strings and/or arrays
 $requestedProfiles = @()
+$aliasWarningsShown = @{}
 if ($Profile -and $Profile.Count -gt 0) {
     foreach ($entry in $Profile) {
         foreach ($token in ($entry -split ',')) {
             $trimmed = $token.Trim()
-            if ($trimmed) { $requestedProfiles += $trimmed }
+            if ($trimmed) {
+                $aliasKey = $trimmed.ToLowerInvariant()
+                if ($profileAliases.ContainsKey($aliasKey)) {
+                    $canonical = $profileAliases[$aliasKey]
+                    if (-not $aliasWarningsShown.ContainsKey($aliasKey)) {
+                        Write-DotbotWarning "Profile '$trimmed' is deprecated and will be removed in a future release. Use '$canonical' instead."
+                        $aliasWarningsShown[$aliasKey] = $true
+                    }
+                    $requestedProfiles += $canonical
+                } else {
+                    $requestedProfiles += $trimmed
+                }
+            }
         }
     }
+
+    # Deduplicate while preserving the first-seen order (case-insensitive)
+    $dedupedProfiles = @()
+    $seenRequestedProfiles = @{}
+    foreach ($name in $requestedProfiles) {
+        $key = $name.ToLowerInvariant()
+        if (-not $seenRequestedProfiles.ContainsKey($key)) {
+            $seenRequestedProfiles[$key] = $true
+            $dedupedProfiles += $name
+        }
+    }
+    $requestedProfiles = $dedupedProfiles
 }
 
 # --- Helper: parse a simple profile.yaml (no external YAML module needed) ---
@@ -407,13 +437,15 @@ $installedStacks = @()
 
 foreach ($profileName in $resolvedOrder) {
     $profileDir = Join-Path $ProfilesDir $profileName
+    $profileDirFull = [System.IO.Path]::GetFullPath($profileDir)
     $meta = $profileMeta[$profileName]
 
     Write-Status "Installing profile: $profileName ($($meta.type))"
 
     # Copy profile files (overlay on top of default)
     Get-ChildItem -Path $profileDir -Recurse -File | ForEach-Object {
-        $relativePath = $_.FullName.Substring($profileDir.Length + 1)
+        $sourceFileFull = [System.IO.Path]::GetFullPath($_.FullName)
+        $relativePath = [System.IO.Path]::GetRelativePath($profileDirFull, $sourceFileFull) -replace '/', '\'
         $destPath = Join-Path $BotDir $relativePath
         $destDir = Split-Path $destPath -Parent
 

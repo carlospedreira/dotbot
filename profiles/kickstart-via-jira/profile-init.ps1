@@ -1,5 +1,5 @@
-# profile-init.ps1 — multi-repo profile initialization
-# Runs after dotbot init -Profile multi-repo (not copied to .bot/)
+# profile-init.ps1 — kickstart-via-jira profile initialization
+# Runs after dotbot init -Profile kickstart-via-jira (not copied to .bot/)
 
 # ---------------------------------------------------------------------------
 # 1. Check required CLI tools
@@ -118,4 +118,4 @@ if ($content -notmatch '\.env\.local') {
     Write-Success "Added .env.local to .gitignore"
 }
 
-Write-Success "multi-repo profile initialized"
+Write-Success "kickstart-via-jira profile initialized"

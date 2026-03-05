@@ -174,7 +174,7 @@ function Get-StaticImportPaths {
 $scanDirs = @(
     @{ Name = "profiles/default"; Path = Join-Path $repoRoot "profiles\default" }
     @{ Name = "profiles/dotnet";  Path = Join-Path $repoRoot "profiles\dotnet" }
-    @{ Name = "profiles/multi-repo"; Path = Join-Path $repoRoot "profiles\multi-repo" }
+    @{ Name = "profiles/kickstart-via-jira"; Path = Join-Path $repoRoot "profiles\kickstart-via-jira" }
     @{ Name = "scripts";          Path = Join-Path $repoRoot "scripts" }
 )
 

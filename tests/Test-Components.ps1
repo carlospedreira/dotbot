@@ -585,21 +585,21 @@ if (Test-Path $pollerModule) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
-# MULTI-REPO PROFILE: TOOL REGISTRATION & CATEGORIES
+# kickstart-via-jira PROFILE: TOOL REGISTRATION & CATEGORIES
 # ═══════════════════════════════════════════════════════════════════
 
-Write-Host "  MULTI-REPO TOOL REGISTRATION" -ForegroundColor Cyan
+Write-Host "  kickstart-via-jira TOOL REGISTRATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-$multiRepoProfile = Join-Path $dotbotDir "profiles\multi-repo"
-if (Test-Path $multiRepoProfile) {
+$kickstartViaJiraProfile = Join-Path $dotbotDir "profiles\kickstart-via-jira"
+if (Test-Path $kickstartViaJiraProfile) {
     $mrTestProject = New-TestProject
     $mrBotDir = Join-Path $mrTestProject ".bot"
 
     Push-Location $mrTestProject
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile multi-repo 2>&1 | Out-Null
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dotbotDir "scripts\init-project.ps1") -Profile kickstart-via-jira 2>&1 | Out-Null
     & git add -A 2>&1 | Out-Null
-    & git commit -m "dotbot init multi-repo" --quiet 2>&1 | Out-Null
+    & git commit -m "dotbot init kickstart-via-jira" --quiet 2>&1 | Out-Null
     Pop-Location
 
     # Strip verify config to only include scripts that actually exist in the test project
@@ -622,12 +622,12 @@ if (Test-Path $multiRepoProfile) {
 
     try {
         $mrMcpProcess = Start-McpServer -BotDir $mrBotDir
-        Assert-True -Name "Multi-repo MCP server starts" `
+        Assert-True -Name "kickstart-via-jira MCP server starts" `
             -Condition (-not $mrMcpProcess.HasExited) `
             -Message "Server process exited immediately"
 
         $mrInitResponse = Send-McpInitialize -Process $mrMcpProcess
-        Assert-True -Name "Multi-repo MCP initialize responds" `
+        Assert-True -Name "kickstart-via-jira MCP initialize responds" `
             -Condition ($null -ne $mrInitResponse) `
             -Message "No response"
 
@@ -640,7 +640,7 @@ if (Test-Path $multiRepoProfile) {
             params  = @{}
         }
 
-        Assert-True -Name "Multi-repo tools/list responds" `
+        Assert-True -Name "kickstart-via-jira tools/list responds" `
             -Condition ($null -ne $mrListResponse) `
             -Message "No response"
 
@@ -649,7 +649,7 @@ if (Test-Path $multiRepoProfile) {
 
             # Check the 3 new tools are registered
             foreach ($toolName in @('repo_clone', 'repo_list', 'research_status')) {
-                Assert-True -Name "Multi-repo tool '$toolName' registered" `
+                Assert-True -Name "kickstart-via-jira tool '$toolName' registered" `
                     -Condition ($toolName -in $mrToolNames) `
                     -Message "Tool not found in tools/list"
             }
@@ -657,17 +657,17 @@ if (Test-Path $multiRepoProfile) {
             # Check inputSchema is present for each new tool
             foreach ($toolName in @('repo_clone', 'repo_list', 'research_status')) {
                 $toolDef = $mrListResponse.result.tools | Where-Object { $_.name -eq $toolName }
-                Assert-True -Name "Multi-repo tool '$toolName' has inputSchema" `
+                Assert-True -Name "kickstart-via-jira tool '$toolName' has inputSchema" `
                     -Condition ($null -ne $toolDef.inputSchema) `
                     -Message "inputSchema missing"
             }
         }
 
         Write-Host ""
-        Write-Host "  MULTI-REPO CATEGORIES" -ForegroundColor Cyan
+        Write-Host "  kickstart-via-jira CATEGORIES" -ForegroundColor Cyan
         Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
-        # Test task_create with multi-repo category "research"
+        # Test task_create with kickstart-via-jira category "research"
         $mrRequestId++
         $researchResponse = Send-McpRequest -Process $mrMcpProcess -Request @{
             jsonrpc = '2.0'
@@ -697,7 +697,7 @@ if (Test-Path $multiRepoProfile) {
                 -Message "Error or no response: $($researchResponse | ConvertTo-Json -Compress -Depth 3)"
         }
 
-        # Test task_create with multi-repo category "analysis"
+        # Test task_create with kickstart-via-jira category "analysis"
         $mrRequestId++
         $analysisResponse = Send-McpRequest -Process $mrMcpProcess -Request @{
             jsonrpc = '2.0'
@@ -767,7 +767,7 @@ if (Test-Path $multiRepoProfile) {
         }
 
     } catch {
-        Write-TestResult -Name "Multi-repo MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
+        Write-TestResult -Name "kickstart-via-jira MCP tests" -Status Fail -Message "Exception: $($_.Exception.Message)"
     } finally {
         if ($mrMcpProcess) {
             Stop-McpServer -Process $mrMcpProcess
@@ -775,7 +775,7 @@ if (Test-Path $multiRepoProfile) {
         Remove-TestProject -Path $mrTestProject
     }
 } else {
-    Write-TestResult -Name "Multi-repo tool registration" -Status Skip -Message "multi-repo profile not found"
+    Write-TestResult -Name "kickstart-via-jira tool registration" -Status Skip -Message "kickstart-via-jira profile not found"
 }
 
 Write-Host ""

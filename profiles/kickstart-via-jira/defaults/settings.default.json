@@ -1,5 +1,5 @@
 {
-  "profile": "multi-repo",
+  "profile": "kickstart-via-jira",
   "provider": "claude",
   "mcp_enabled": true,
   "standards_as_warp_rules": true,
