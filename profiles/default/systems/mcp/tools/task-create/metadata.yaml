@@ -47,6 +47,10 @@ inputSchema:
       description: List of agent persona file paths to read before implementing (e.g., .bot/agents/backend-developer.md)
       items:
         type: string
+    clarification_policy:
+      type: string
+      description: Clarification behavior for analysis (off, balanced, strict, required)
+      enum: [off, balanced, strict, required]
     needs_interview:
       type: boolean
       description: If true, the analysis phase should interview the user to clarify requirements before finalizing the task

@@ -101,6 +101,8 @@ function Invoke-TaskGetNext {
             applicable_agents = $nextTask.applicable_agents
             applicable_standards = $nextTask.applicable_standards
             file_path = $nextTask.file_path
+            clarification_policy = $nextTask.clarification_policy
+            effective_clarification_policy = $nextTask.effective_clarification_policy
             needs_interview = $nextTask.needs_interview
             questions_resolved = $nextTask.questions_resolved
             working_dir = $nextTask.working_dir

@@ -470,7 +470,15 @@ function updatePipelineColumn(containerId, tasks, type) {
         }
 
         // Show phase sub-label for tasks in the "Working" column
-        const phaseLabel = task._phase ? `<span class="task-tag phase-tag">${escapeHtml(task._phase)}</span>` : '';
+        const phaseLabel = task._phase
+            ? `<span class="task-tag phase-tag">${escapeHtml(task._phase)}</span>`
+            : (type === 'needs-input'
+                ? `<span class="task-tag phase-tag">${escapeHtml(
+                    typeof getNeedsInputStatusLabel === 'function'
+                        ? getNeedsInputStatusLabel(task)
+                        : 'needs-input'
+                )}</span>`
+                : '');
         const roadmapStateTags = typeof buildRoadmapTaskStatusTags === 'function'
             ? buildRoadmapTaskStatusTags(task, type)
             : '';
@@ -840,4 +848,3 @@ function updateSteeringPanel(instances) {
     if (priority) priority.disabled = !canSend;
     if (sendBtn) sendBtn.disabled = !canSend;
 }
-

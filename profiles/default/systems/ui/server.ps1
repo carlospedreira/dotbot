@@ -1077,7 +1077,10 @@ try {
                                 $statusCode = 400
                                 $content = @{ success = $false; error = "Missing required 'prompt' field" } | ConvertTo-Json -Compress
                             } else {
-                                $content = Start-TaskCreation -UserPrompt $body.prompt -NeedsInterview ($body.needs_interview -eq $true) | ConvertTo-Json -Compress
+                                $content = Start-TaskCreation `
+                                    -UserPrompt $body.prompt `
+                                    -NeedsInterview ($body.needs_interview -eq $true) `
+                                    -ClarificationPolicy $body.clarification_policy | ConvertTo-Json -Compress
                             }
                         } catch {
                             $statusCode = 500
@@ -1408,4 +1411,3 @@ try {
     }
     Write-Status "Server stopped" -Type Warn
 }
-

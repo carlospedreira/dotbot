@@ -273,6 +273,7 @@ function Invoke-ProviderStream {
 
         [string]$SessionId,
         [switch]$PersistSession,
+        [switch]$CaptureAssistantText,
         [switch]$ShowDebugJson,
         [switch]$ShowVerbose,
         [string]$ProviderName
@@ -297,13 +298,17 @@ function Invoke-ProviderStream {
         }
         if ($SessionId)    { $streamArgs['SessionId'] = $SessionId }
         if ($PersistSession) { $streamArgs['PersistSession'] = $true }
+        if ($CaptureAssistantText) { $streamArgs['CaptureAssistantText'] = $true }
         if ($ShowDebugJson) { $streamArgs['ShowDebugJson'] = $true }
         if ($ShowVerbose)  { $streamArgs['ShowVerbose'] = $true }
 
-        Invoke-ClaudeStream @streamArgs
+        $responseText = Invoke-ClaudeStream @streamArgs
 
         # Propagate rate limit info
         $script:LastProviderRateLimitInfo = Get-LastRateLimitInfo
+        if ($CaptureAssistantText) {
+            return $responseText
+        }
         return
     }
 
@@ -332,6 +337,7 @@ function Invoke-ProviderStream {
     # Initialize parser state
     $parserState = @{
         assistantText    = New-Object System.Text.StringBuilder
+        fullAssistantText = New-Object System.Text.StringBuilder
         totalInputTokens = 0
         totalOutputTokens = 0
         totalCacheRead   = 0
@@ -373,6 +379,10 @@ function Invoke-ProviderStream {
         }
     } finally {
         [Console]::OutputEncoding = $prevOutputEncoding
+    }
+
+    if ($CaptureAssistantText) {
+        return $parserState.fullAssistantText.ToString()
     }
 }
 

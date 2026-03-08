@@ -6,6 +6,7 @@
   "standards_as_warp_rules": true,
   "analysis": {
     "auto_approve_splits": false,
+    "default_new_task_clarification_policy": "balanced",
     "split_threshold_effort": "XL",
     "question_timeout_hours": null,
     "mode": "on-demand",

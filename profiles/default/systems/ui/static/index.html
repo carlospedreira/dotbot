@@ -354,7 +354,7 @@
                                 <div class="stat-value" data-status="in-progress" id="analysing-count">0</div>
                             </div>
                             <div class="stat-card">
-                                <div class="stat-label">AWAITING INPUT</div>
+                                <div class="stat-label">NEEDS INPUT</div>
                                 <div class="stat-value" data-status="todo" id="needs-input-count">0</div>
                             </div>
                             <div class="stat-card">
@@ -655,6 +655,16 @@
                                             </div>
                                             <div class="model-grid" id="analysis-mode-grid">
                                                 <!-- Mode options populated by JS -->
+                                            </div>
+                                        </div>
+
+                                        <div class="settings-subsection">
+                                            <div class="subsection-header">New Task Clarification Policy</div>
+                                            <div class="settings-description">
+                                                Default clarification behavior stamped onto newly created tasks.
+                                            </div>
+                                            <div class="model-grid" id="clarification-policy-grid">
+                                                <!-- Clarification policy options populated by JS -->
                                             </div>
                                         </div>
 
@@ -1260,11 +1270,14 @@
                         Dotbot will analyze your request and create a properly structured task with acceptance criteria, implementation steps, and sensible defaults.
                     </div>
                     <div class="form-option">
-                        <label class="form-checkbox-label">
-                            <input type="checkbox" id="task-create-interview">
-                            <span class="form-checkbox-text">Interview me to clarify requirements</span>
-                        </label>
-                        <div class="form-option-hint">Dotbot will ask clarifying questions before finalizing the task</div>
+                        <label class="form-label" for="task-create-clarification-policy">Clarification policy</label>
+                        <select class="settings-select" id="task-create-clarification-policy">
+                            <option value="off">Off</option>
+                            <option value="balanced" selected>Balanced</option>
+                            <option value="strict">Strict</option>
+                            <option value="required">Required</option>
+                        </select>
+                        <div class="form-option-hint">Balanced pauses when ambiguity could materially change what gets built.</div>
                     </div>
                 </div>
             </div>
@@ -1421,4 +1434,3 @@
     <script src="app.js"></script>
 </body>
 </html>
-

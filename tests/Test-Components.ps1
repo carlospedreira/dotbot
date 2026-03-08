@@ -92,6 +92,9 @@ if (Test-Path $settingsPath) {
     Assert-True -Name "settings.instance_id is valid after init" `
         -Condition $hasInitGuid `
         -Message "Expected a valid GUID in settings.instance_id"
+    Assert-Equal -Name "analysis.default_new_task_clarification_policy defaults to balanced" `
+        -Expected "balanced" `
+        -Actual "$($settingsJson.analysis.default_new_task_clarification_policy)"
 }
 
 $instanceIdModule = Join-Path $botDir "systems\runtime\modules\InstanceId.psm1"
@@ -152,6 +155,120 @@ if (Test-Path $promptBuilderScript) {
         -Message "Expected full INSTANCE_ID replacement"
 } else {
     Write-TestResult -Name "prompt-builder script exists" -Status Fail -Message "Script not found at $promptBuilderScript"
+}
+
+$clarificationPolicyModule = Join-Path $botDir "systems\runtime\modules\ClarificationPolicy.psm1"
+if (Test-Path $clarificationPolicyModule) {
+    Import-Module $clarificationPolicyModule -Force
+
+    $defaultClarificationPolicy = Get-DefaultNewTaskClarificationPolicy -SettingsPath $settingsPath
+    Assert-Equal -Name "Get-DefaultNewTaskClarificationPolicy reads balanced default" `
+        -Expected "balanced" `
+        -Actual $defaultClarificationPolicy
+
+    $legacyPolicy = Get-EffectiveTaskClarificationPolicy -Task ([PSCustomObject]@{
+        needs_interview = $true
+        questions_resolved = @()
+    })
+    Assert-Equal -Name "Legacy needs_interview maps to required clarification policy" `
+        -Expected "required" `
+        -Actual $legacyPolicy
+
+    $explicitPolicy = Get-EffectiveTaskClarificationPolicy -Task ([PSCustomObject]@{
+        clarification_policy = "strict"
+        needs_interview = $true
+        questions_resolved = @()
+    })
+    Assert-Equal -Name "Explicit clarification_policy overrides legacy needs_interview" `
+        -Expected "strict" `
+        -Actual $explicitPolicy
+
+    $resolvedTask = [PSCustomObject]@{
+        clarification_policy = "required"
+        questions_resolved = @(
+            [PSCustomObject]@{ id = "q1"; kind = "clarification"; question = "Which path?"; answer = "A" }
+        )
+        pending_question = $null
+    }
+    Assert-True -Name "Resolved required clarification task skips repeated clarification gate" `
+        -Condition (-not (Test-ShouldRunClarificationGate -Task $resolvedTask)) `
+        -Message "Expected resumed required task not to re-enter clarification gate"
+
+    $freshRequiredTask = [PSCustomObject]@{
+        clarification_policy = "required"
+    }
+    Assert-True -Name "Fresh required clarification task enters clarification gate" `
+        -Condition (Test-ShouldRunClarificationGate -Task $freshRequiredTask) `
+        -Message "Expected unresolved required task to enter clarification gate"
+
+    Assert-True -Name "Required clarification policy maps to legacy needs_interview flag" `
+        -Condition (Get-LegacyNeedsInterviewFlag -ClarificationPolicy "required") `
+        -Message "Expected required clarification policy to set legacy needs_interview"
+
+    Assert-True -Name "Strict clarification policy clears legacy needs_interview flag" `
+        -Condition (-not (Get-LegacyNeedsInterviewFlag -ClarificationPolicy "strict")) `
+        -Message "Expected non-required clarification policy to clear legacy needs_interview"
+
+    Assert-True -Name "Legacy clarification sentinel does not throw and clears legacy needs_interview flag" `
+        -Condition (-not (Get-LegacyNeedsInterviewFlag -ClarificationPolicy "legacy")) `
+        -Message "Expected legacy clarification sentinel to resolve to no interview requirement"
+
+    $resumedRequiredTask = [PSCustomObject]@{
+        clarification_policy = "required"
+        questions_resolved = @(
+            [PSCustomObject]@{ id = "q1"; kind = "clarification"; question = "Which path?"; answer = "A" }
+        )
+        pending_question = $null
+    }
+    Assert-True -Name "Resolved required clarification task clears analysis prompt interview flag" `
+        -Condition (-not (Get-AnalysisPromptNeedsInterviewFlag -Task $resumedRequiredTask)) `
+        -Message "Expected resumed required task not to re-enter the interview phase in analysis prompts"
+
+    $freshRequiredPromptTask = [PSCustomObject]@{
+        clarification_policy = "required"
+        questions_resolved = @()
+        pending_question = $null
+    }
+    Assert-True -Name "Unresolved required clarification task keeps analysis prompt interview flag" `
+        -Condition (Get-AnalysisPromptNeedsInterviewFlag -Task $freshRequiredPromptTask) `
+        -Message "Expected unresolved required task to keep the interview phase active in analysis prompts"
+
+    $mergeConflictResolvedTask = [PSCustomObject]@{
+        clarification_policy = "required"
+        questions_resolved = @(
+            [PSCustomObject]@{ id = "merge-conflict"; question = "Resolve merge conflict?"; answer = "A" }
+        )
+        pending_question = $null
+    }
+    Assert-True -Name "Non-clarification answers do not satisfy required clarification gate" `
+        -Condition (Test-ShouldRunClarificationGate -Task $mergeConflictResolvedTask) `
+        -Message "Expected non-clarification answered prompts to keep the required clarification gate active"
+
+    Assert-True -Name "Non-clarification answers keep required interview flag active" `
+        -Condition (Get-AnalysisPromptNeedsInterviewFlag -Task $mergeConflictResolvedTask) `
+        -Message "Expected non-clarification answered prompts not to clear the required interview flag"
+} else {
+    Write-TestResult -Name "ClarificationPolicy module exists" -Status Fail -Message "Module not found at $clarificationPolicyModule"
+}
+
+$taskCreateMetadataPath = Join-Path $botDir "systems\mcp\tools\task-create\metadata.yaml"
+if (Test-Path $taskCreateMetadataPath) {
+    $taskCreateMetadata = Get-Content $taskCreateMetadataPath -Raw
+    Assert-True -Name "task_create metadata exposes clarification_policy" `
+        -Condition ($taskCreateMetadata -match '(?m)^\s*clarification_policy:') `
+        -Message "Expected task_create metadata.yaml to declare clarification_policy"
+} else {
+    Write-TestResult -Name "task_create metadata exists" -Status Fail -Message "Metadata not found at $taskCreateMetadataPath"
+}
+
+$taskCreateBulkMetadataPath = Join-Path $botDir "systems\mcp\tools\task-create-bulk\metadata.yaml"
+if (Test-Path $taskCreateBulkMetadataPath) {
+    $taskCreateBulkMetadata = Get-Content $taskCreateBulkMetadataPath -Raw
+    Assert-True -Name "task_create_bulk metadata exposes clarification_policy" `
+        -Condition ($taskCreateBulkMetadata -match '(?m)^\s*clarification_policy:') `
+        -Message "Expected task_create_bulk metadata.yaml to declare clarification_policy"
+} else {
+    Write-TestResult -Name "task_create_bulk metadata exists" -Status Fail -Message "Metadata not found at $taskCreateBulkMetadataPath"
 }
 
 $extractCommitInfoScript = Join-Path $botDir "systems\mcp\modules\Extract-CommitInfo.ps1"
@@ -297,6 +414,19 @@ try {
         Assert-True -Name "Task JSON file created in todo/" `
             -Condition ($todoFiles.Count -gt 0) `
             -Message "No JSON files found in todo/"
+        $createdTaskFile = $todoFiles | Where-Object {
+            try {
+                ((Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $taskId)
+            } catch {
+                $false
+            }
+        } | Select-Object -First 1
+        if ($createdTaskFile) {
+            $createdTaskContent = Get-Content $createdTaskFile.FullName -Raw | ConvertFrom-Json
+            Assert-Equal -Name "task_create stamps default clarification_policy" `
+                -Expected "balanced" `
+                -Actual "$($createdTaskContent.clarification_policy)"
+        }
     }
 
     # List tasks to verify creation (more reliable than get_next which uses index cache)
@@ -434,6 +564,145 @@ try {
     Assert-True -Name "task_create rejects invalid category" `
         -Condition ($null -ne $badCatResponse -and $null -ne $badCatResponse.error) `
         -Message "Expected error response for invalid category"
+
+    $requestId++
+    $strictResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create'
+            arguments = @{
+                name                 = 'Strict Clarification Task'
+                description          = 'A task with explicit clarification policy'
+                clarification_policy = 'strict'
+            }
+        }
+    }
+
+    Assert-True -Name "task_create accepts explicit clarification_policy" `
+        -Condition ($null -ne $strictResponse -and $null -ne $strictResponse.result) `
+        -Message "Expected successful response for explicit clarification policy"
+
+    if ($strictResponse -and $strictResponse.result) {
+        $strictObj = ($strictResponse.result.content[0].text | ConvertFrom-Json)
+        if ($strictObj.file_path -and (Test-Path $strictObj.file_path)) {
+            $strictTask = Get-Content $strictObj.file_path -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Explicit clarification_policy persists to task JSON" `
+                -Expected "strict" `
+                -Actual "$($strictTask.clarification_policy)"
+            Assert-Equal -Name "Explicit strict clarification_policy clears legacy needs_interview" `
+                -Expected "False" `
+                -Actual "$($strictTask.needs_interview)"
+        }
+    }
+
+    $requestId++
+    $legacyInterviewResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create'
+            arguments = @{
+                name            = 'Legacy Interview Task'
+                description     = 'A task using the legacy needs_interview flag'
+                needs_interview = $true
+            }
+        }
+    }
+
+    Assert-True -Name "task_create accepts legacy needs_interview flag" `
+        -Condition ($null -ne $legacyInterviewResponse -and $null -ne $legacyInterviewResponse.result) `
+        -Message "Expected successful response for legacy needs_interview flag"
+
+    if ($legacyInterviewResponse -and $legacyInterviewResponse.result) {
+        $legacyObj = ($legacyInterviewResponse.result.content[0].text | ConvertFrom-Json)
+        if ($legacyObj.file_path -and (Test-Path $legacyObj.file_path)) {
+            $legacyTask = Get-Content $legacyObj.file_path -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Legacy needs_interview maps to required clarification_policy" `
+                -Expected "required" `
+                -Actual "$($legacyTask.clarification_policy)"
+            Assert-Equal -Name "Legacy needs_interview remains set for required clarification_policy" `
+                -Expected "True" `
+                -Actual "$($legacyTask.needs_interview)"
+        }
+    }
+
+    $requestId++
+    $conflictingResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create'
+            arguments = @{
+                name                 = 'Conflicting Clarification Task'
+                description          = 'A task with conflicting clarification inputs'
+                clarification_policy = 'off'
+                needs_interview      = $true
+            }
+        }
+    }
+
+    Assert-True -Name "task_create accepts conflicting clarification inputs" `
+        -Condition ($null -ne $conflictingResponse -and $null -ne $conflictingResponse.result) `
+        -Message "Expected successful response for conflicting clarification inputs"
+
+    if ($conflictingResponse -and $conflictingResponse.result) {
+        $conflictingObj = ($conflictingResponse.result.content[0].text | ConvertFrom-Json)
+        if ($conflictingObj.file_path -and (Test-Path $conflictingObj.file_path)) {
+            $conflictingTask = Get-Content $conflictingObj.file_path -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Explicit off clarification_policy wins over legacy needs_interview" `
+                -Expected "off" `
+                -Actual "$($conflictingTask.clarification_policy)"
+            Assert-Equal -Name "Explicit off clarification_policy clears persisted needs_interview" `
+                -Expected "False" `
+                -Actual "$($conflictingTask.needs_interview)"
+        }
+    }
+
+    $requestId++
+    $bulkResponse = Send-McpRequest -Process $mcpProcess -Request @{
+        jsonrpc = '2.0'
+        id      = $requestId
+        method  = 'tools/call'
+        params  = @{
+            name      = 'task_create_bulk'
+            arguments = @{
+                tasks = @(
+                    @{
+                        name = 'Bulk Default Clarification Task'
+                        description = 'Bulk-created task with default clarification policy'
+                    },
+                    @{
+                        name = 'Bulk Explicit Clarification Task'
+                        description = 'Bulk-created task with explicit clarification policy'
+                        clarification_policy = 'off'
+                    }
+                )
+            }
+        }
+    }
+
+    Assert-True -Name "task_create_bulk supports clarification policy defaulting" `
+        -Condition ($null -ne $bulkResponse -and $null -ne $bulkResponse.result) `
+        -Message "Expected successful response for task_create_bulk"
+
+    if ($bulkResponse -and $bulkResponse.result) {
+        $bulkObj = ($bulkResponse.result.content[0].text | ConvertFrom-Json)
+        if ($bulkObj.created_tasks -and $bulkObj.created_tasks.Count -ge 2) {
+            $bulkDefaultTask = Get-Content $bulkObj.created_tasks[0].file_path -Raw | ConvertFrom-Json
+            $bulkExplicitTask = Get-Content $bulkObj.created_tasks[1].file_path -Raw | ConvertFrom-Json
+
+            Assert-Equal -Name "task_create_bulk stamps default clarification_policy" `
+                -Expected "balanced" `
+                -Actual "$($bulkDefaultTask.clarification_policy)"
+            Assert-Equal -Name "task_create_bulk preserves explicit clarification_policy" `
+                -Expected "off" `
+                -Actual "$($bulkExplicitTask.clarification_policy)"
+        }
+    }
 
     Write-Host ""
 
@@ -1363,5 +1632,3 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Components"
 if (-not $allPassed) {
     exit 1
 }
-
-

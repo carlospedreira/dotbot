@@ -1,3 +1,5 @@
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\runtime\modules\ClarificationPolicy.psm1") -Force
+
 function Invoke-TaskGetContext {
     param(
         [hashtable]$Arguments
@@ -70,6 +72,8 @@ function Invoke-TaskGetContext {
                 dependencies = $taskContent.dependencies
                 applicable_agents = $taskContent.applicable_agents
                 applicable_standards = $taskContent.applicable_standards
+                clarification_policy = $taskContent.clarification_policy
+                effective_clarification_policy = Get-EffectiveTaskClarificationPolicy -Task $taskContent
             }
         }
     }
@@ -98,6 +102,8 @@ function Invoke-TaskGetContext {
             dependencies = $taskContent.dependencies
             applicable_agents = $taskContent.applicable_agents
             applicable_standards = $taskContent.applicable_standards
+            clarification_policy = $taskContent.clarification_policy
+            effective_clarification_policy = Get-EffectiveTaskClarificationPolicy -Task $taskContent
         }
         
         # Pre-flight analysis

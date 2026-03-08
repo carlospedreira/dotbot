@@ -7,6 +7,10 @@ Provides functions to query tasks from the filesystem.
 No caching - always reads fresh data to avoid stale state issues.
 #>
 
+if (-not (Get-Command Get-EffectiveTaskClarificationPolicy -ErrorAction SilentlyContinue)) {
+    Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\runtime\modules\ClarificationPolicy.psm1") -Force
+}
+
 $script:TaskIndex = @{
     Todo = @{}          # id -> task metadata
     Analysing = @{}     # Tasks currently being analysed
@@ -420,7 +424,11 @@ function Update-TaskIndex {
                     last_write = $file.LastWriteTimeUtc
                     started_at = $content.started_at
                     completed_at = $content.completed_at
+                    clarification_policy = $content.clarification_policy
+                    effective_clarification_policy = Get-EffectiveTaskClarificationPolicy -Task $content
                     needs_interview = $content.needs_interview
+                    questions_resolved = $content.questions_resolved
+                    pending_question = $content.pending_question
                     working_dir = $content.working_dir
                     external_repo = $content.external_repo
                     research_prompt = $content.research_prompt
@@ -922,8 +930,6 @@ Export-ModuleMember -Function @(
     'Reset-TaskIndex',
     'Stop-TaskIndexWatcher'
 )
-
-
 
 
 

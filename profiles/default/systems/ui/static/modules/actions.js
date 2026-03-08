@@ -47,6 +47,7 @@ function initTaskCreateModal() {
     const cancelBtn = document.getElementById('task-create-cancel');
     const submitBtn = document.getElementById('task-create-submit');
     const textarea = document.getElementById('task-create-prompt');
+    const clarificationPolicySelect = document.getElementById('task-create-clarification-policy');
 
     // Add task button handlers (both overview and pipeline)
     document.getElementById('add-task-btn-upcoming')?.addEventListener('click', openTaskCreateModal);
@@ -71,6 +72,53 @@ function initTaskCreateModal() {
             submitTaskCreate();
         }
     });
+
+    clarificationPolicySelect?.addEventListener('change', () => {
+        clarificationPolicySelect.dataset.userChanged = 'true';
+    });
+}
+
+async function ensureTaskCreateClarificationPolicyLoaded() {
+    const clarificationPolicySelect = document.getElementById('task-create-clarification-policy');
+    const submitBtn = document.getElementById('task-create-submit');
+
+    if (!clarificationPolicySelect) {
+        return null;
+    }
+
+    if (window.currentAnalysisConfig?.default_new_task_clarification_policy) {
+        clarificationPolicySelect.value = window.currentAnalysisConfig.default_new_task_clarification_policy;
+        clarificationPolicySelect.dataset.userChanged = 'false';
+        return window.currentAnalysisConfig;
+    }
+
+    clarificationPolicySelect.disabled = true;
+    if (submitBtn && !submitBtn.classList.contains('loading')) {
+        submitBtn.disabled = true;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/api/config/analysis`);
+        const data = await response.json();
+        if (response.ok && data && !data.error) {
+            window.currentAnalysisConfig = data;
+            const userChanged = clarificationPolicySelect.dataset.userChanged === 'true';
+            if (!userChanged) {
+                clarificationPolicySelect.value = data.default_new_task_clarification_policy || clarificationPolicySelect.value || 'balanced';
+                clarificationPolicySelect.dataset.userChanged = 'false';
+            }
+            return data;
+        }
+    } catch (error) {
+        console.error('Failed to load clarification policy for task creation:', error);
+    } finally {
+        clarificationPolicySelect.disabled = false;
+        if (submitBtn && !submitBtn.classList.contains('loading')) {
+            submitBtn.disabled = false;
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -79,11 +127,17 @@ function initTaskCreateModal() {
 function openTaskCreateModal() {
     const modal = document.getElementById('task-create-modal');
     const textarea = document.getElementById('task-create-prompt');
+    const clarificationPolicySelect = document.getElementById('task-create-clarification-policy');
 
     if (modal) {
         modal.classList.add('visible');
+        if (clarificationPolicySelect && window.currentAnalysisConfig?.default_new_task_clarification_policy) {
+            clarificationPolicySelect.value = window.currentAnalysisConfig?.default_new_task_clarification_policy || 'balanced';
+            clarificationPolicySelect.dataset.userChanged = 'false';
+        }
         // Focus the textarea after a brief delay for the modal animation
         setTimeout(() => textarea?.focus(), 100);
+        void ensureTaskCreateClarificationPolicyLoaded();
     }
 }
 
@@ -94,13 +148,17 @@ function closeTaskCreateModal() {
     const modal = document.getElementById('task-create-modal');
     const textarea = document.getElementById('task-create-prompt');
     const submitBtn = document.getElementById('task-create-submit');
-    const interviewCheckbox = document.getElementById('task-create-interview');
+    const clarificationPolicySelect = document.getElementById('task-create-clarification-policy');
 
     if (modal) {
         modal.classList.remove('visible');
         // Clear the form
         if (textarea) textarea.value = '';
-        if (interviewCheckbox) interviewCheckbox.checked = false;
+        if (clarificationPolicySelect) {
+            clarificationPolicySelect.value = window.currentAnalysisConfig?.default_new_task_clarification_policy || 'balanced';
+            clarificationPolicySelect.dataset.userChanged = 'false';
+            clarificationPolicySelect.disabled = false;
+        }
         // Reset button state
         if (submitBtn) {
             submitBtn.classList.remove('loading');
@@ -115,10 +173,15 @@ function closeTaskCreateModal() {
 async function submitTaskCreate() {
     const textarea = document.getElementById('task-create-prompt');
     const submitBtn = document.getElementById('task-create-submit');
-    const interviewCheckbox = document.getElementById('task-create-interview');
+    const clarificationPolicySelect = document.getElementById('task-create-clarification-policy');
 
     const prompt = textarea?.value?.trim();
-    const needsInterview = interviewCheckbox?.checked || false;
+
+    if (!window.currentAnalysisConfig?.default_new_task_clarification_policy) {
+        await ensureTaskCreateClarificationPolicyLoaded();
+    }
+
+    const clarificationPolicy = clarificationPolicySelect?.value || window.currentAnalysisConfig?.default_new_task_clarification_policy || 'balanced';
 
     if (!prompt) {
         showToast('Please describe the task you want to create', 'warning');
@@ -135,7 +198,7 @@ async function submitTaskCreate() {
         const response = await fetch(`${API_BASE}/api/task/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, needs_interview: needsInterview })
+            body: JSON.stringify({ prompt, clarification_policy: clarificationPolicy })
         });
 
         const result = await response.json();

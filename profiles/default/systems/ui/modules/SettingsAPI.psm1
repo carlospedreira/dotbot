@@ -202,7 +202,16 @@ function Get-AnalysisConfig {
     try {
         $settingsData = Get-Content $settingsDefaultFile -Raw | ConvertFrom-Json
         $analysis = if ($settingsData.analysis) { $settingsData.analysis } else {
-            @{ auto_approve_splits = $false; split_threshold_effort = "XL"; question_timeout_hours = $null; mode = "on-demand" }
+            @{
+                auto_approve_splits = $false
+                default_new_task_clarification_policy = "balanced"
+                split_threshold_effort = "XL"
+                question_timeout_hours = $null
+                mode = "on-demand"
+            }
+        }
+        if (-not $analysis.PSObject.Properties['default_new_task_clarification_policy']) {
+            $analysis | Add-Member -NotePropertyName "default_new_task_clarification_policy" -NotePropertyValue "balanced" -Force
         }
         return $analysis
     } catch {
@@ -220,6 +229,7 @@ function Set-AnalysisConfig {
     if (-not $settingsData.analysis) {
         $settingsData | Add-Member -NotePropertyName "analysis" -NotePropertyValue @{
             auto_approve_splits = $false
+            default_new_task_clarification_policy = "balanced"
             split_threshold_effort = "XL"
             question_timeout_hours = $null
             mode = "on-demand"
@@ -228,6 +238,19 @@ function Set-AnalysisConfig {
 
     if ($null -ne $Body.auto_approve_splits) {
         $settingsData.analysis.auto_approve_splits = [bool]$Body.auto_approve_splits
+    }
+    if ($null -ne $Body.default_new_task_clarification_policy) {
+        $validClarificationPolicies = @('off', 'balanced', 'strict', 'required')
+        $normalizedPolicy = [string]$Body.default_new_task_clarification_policy
+        $normalizedPolicy = $normalizedPolicy.Trim().ToLowerInvariant()
+        if ($normalizedPolicy -notin $validClarificationPolicies) {
+            return @{
+                _statusCode = 400
+                success = $false
+                error = "Invalid default_new_task_clarification_policy '$normalizedPolicy'"
+            }
+        }
+        $settingsData.analysis.default_new_task_clarification_policy = $normalizedPolicy
     }
     if ($null -ne $Body.split_threshold_effort) {
         $settingsData.analysis.split_threshold_effort = [string]$Body.split_threshold_effort

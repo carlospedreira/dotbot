@@ -76,6 +76,7 @@ function Invoke-TaskMarkNeedsInput {
         $pendingQuestion = @{
             id = $questionId
             question = $question.question
+            kind = if ($question.kind) { $question.kind } else { "clarification" }
             context = $question.context
             options = $question.options
             recommendation = if ($question.recommendation) { $question.recommendation } else { "A" }

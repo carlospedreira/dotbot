@@ -94,6 +94,7 @@ Import-Module "$PSScriptRoot\ProviderCLI\ProviderCLI.psm1" -Force
 Import-Module "$PSScriptRoot\ClaudeCLI\ClaudeCLI.psm1" -Force
 Import-Module "$PSScriptRoot\modules\DotBotTheme.psm1" -Force
 Import-Module "$PSScriptRoot\modules\InstanceId.psm1" -Force
+Import-Module "$PSScriptRoot\modules\ClarificationPolicy.psm1" -Force
 $t = Get-DotBotTheme
 
 . "$PSScriptRoot\modules\ui-rendering.ps1"
@@ -123,6 +124,7 @@ if ($Type -in @('analysis', 'execution', 'workflow')) {
 
 if ($Type -in @('analysis', 'workflow')) {
     . "$PSScriptRoot\..\mcp\tools\task-mark-analysing\script.ps1"
+    . "$PSScriptRoot\..\mcp\tools\task-mark-needs-input\script.ps1"
 }
 
 # Load settings for model defaults
@@ -257,6 +259,244 @@ function Test-ProcessLock {
     }
 }
 
+function Get-WorkspaceTaskStatus {
+    param(
+        [Parameter(Mandatory)] [string]$BotRoot,
+        [Parameter(Mandatory)] [string]$TaskId,
+        [string[]]$Statuses = @('analysed', 'needs-input', 'skipped', 'in-progress', 'done')
+    )
+
+    foreach ($dir in $Statuses) {
+        $checkDir = Join-Path $BotRoot "workspace\tasks\$dir"
+        if (-not (Test-Path $checkDir)) {
+            continue
+        }
+
+        foreach ($file in @(Get-ChildItem -Path $checkDir -Filter "*.json" -File -ErrorAction SilentlyContinue)) {
+            try {
+                $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
+                if ($content.id -eq $TaskId) {
+                    return $dir
+                }
+            } catch {
+                # Ignore malformed task files while scanning
+            }
+        }
+    }
+
+    return $null
+}
+
+function Get-ResolvedQuestionsContext {
+    param(
+        [Parameter(Mandatory)] [object]$Task
+    )
+
+    $isResumedTask = $Task.status -eq 'analysing'
+    if (-not $isResumedTask -or -not $Task.questions_resolved) {
+        return ""
+    }
+
+    $resolvedQuestionsContext = "`n## Previously Resolved Questions`n`n"
+    $resolvedQuestionsContext += "This task was previously paused for human input. The following questions have been answered:`n`n"
+    foreach ($q in $Task.questions_resolved) {
+        $resolvedQuestionsContext += "**Q:** $($q.question)`n"
+        $resolvedQuestionsContext += "**A:** $($q.answer)`n`n"
+    }
+    $resolvedQuestionsContext += "Use these answers to guide your analysis. The task is already in ``analysing`` status - do NOT call ``task_mark_analysing`` again.`n"
+
+    return $resolvedQuestionsContext
+}
+
+function Build-ClarificationGatePrompt {
+    param(
+        [Parameter(Mandatory)] [object]$Task,
+        [Parameter(Mandatory)] [string]$SessionId,
+        [Parameter(Mandatory)] [string]$ProcessId,
+        [Parameter(Mandatory)] [string]$InstanceType,
+        [Parameter(Mandatory)] [string]$ClarificationPolicy,
+        [string]$ResolvedQuestionsContext = ""
+    )
+
+    $acceptanceCriteria = if ($Task.acceptance_criteria) {
+        ($Task.acceptance_criteria | ForEach-Object { "- $_" }) -join "`n"
+    } else {
+        "No specific acceptance criteria defined."
+    }
+
+    $steps = if ($Task.steps) {
+        ($Task.steps | ForEach-Object { "- $_" }) -join "`n"
+    } else {
+        "No specific steps defined."
+    }
+
+    $policyInstructions = switch ($ClarificationPolicy) {
+        'required' {
+            @"
+- Policy is ``required``: you MUST ask at least one focused clarification question before analysis can continue unless the task already has answered clarification questions.
+- Prefer a single high-signal question that removes the highest-risk ambiguity first.
+"@
+        }
+        'strict' {
+            @"
+- Policy is ``strict``: ask a clarification question for most non-trivial ambiguity.
+- Ask if there is any meaningful uncertainty about scope, UX, API shape, schema/data model impact, destructive behavior, external integrations, security/privacy expectations, or rollout behavior.
+"@
+        }
+        default {
+            @"
+- Policy is ``balanced``: ask a clarification question when ambiguity could materially change what gets built.
+- Ask if there are multiple plausible interpretations of user intent, acceptance criteria for user-visible work are missing, UX/API shape is unspecified, schema/data model changes are unclear, destructive behavior is possible, or integration behavior is underspecified.
+"@
+        }
+    }
+
+    return @"
+You are running a clarification gate before full task analysis.
+
+Your only job is to decide whether this task must pause for human clarification now.
+
+## Task Context
+
+- **Session ID:** $SessionId
+- **Task ID:** $($Task.id)
+- **Task Name:** $($Task.name)
+- **Category:** $($Task.category)
+- **Priority:** $($Task.priority)
+- **Effort:** $($Task.effort)
+- **Clarification Policy:** $ClarificationPolicy
+
+### Description
+$($Task.description)
+
+### Acceptance Criteria
+$acceptanceCriteria
+
+### Implementation Steps
+$steps
+$ResolvedQuestionsContext
+## Process Context
+
+- **Process ID:** $ProcessId
+- **Instance Type:** $InstanceType
+
+Use the Process ID when calling ``steering_heartbeat`` (pass it as ``process_id``).
+
+## Required Behavior
+
+- Do NOT perform full analysis.
+- Do NOT implement anything.
+- If clarification is needed now, call ``task_mark_needs_input`` with one focused question.
+- If clarification is not needed, respond with the exact text ``NO_CLARIFICATION_NEEDED`` and do not call any task mutation tools.
+$policyInstructions
+## Focus Areas
+
+Look specifically for ambiguity in:
+- primary user intent or scope boundaries
+- user-visible behavior or UX expectations
+- API shape, contracts, or integration behavior
+- schema, persistence, or data model changes
+- destructive or irreversible behavior
+- security, privacy, or permission assumptions
+
+If any of those could materially change the build under the active policy, pause for clarification now.
+"@
+}
+
+function Invoke-ClarificationGate {
+    param(
+        [Parameter(Mandatory)] [object]$Task,
+        [Parameter(Mandatory)] [string]$SessionId,
+        [Parameter(Mandatory)] [string]$ProcessId,
+        [Parameter(Mandatory)] [string]$InstanceType,
+        [Parameter(Mandatory)] [string]$ClarificationPolicy,
+        [Parameter(Mandatory)] [string]$Model,
+        [Parameter(Mandatory)] [string]$BotRoot,
+        [Parameter(Mandatory)] [string]$ProjectRoot,
+        [string]$ResolvedQuestionsContext = "",
+        [switch]$ShowDebug,
+        [switch]$ShowVerbose
+    )
+
+    $gatePrompt = Build-ClarificationGatePrompt `
+        -Task $Task `
+        -SessionId $SessionId `
+        -ProcessId $ProcessId `
+        -InstanceType $InstanceType `
+        -ClarificationPolicy $ClarificationPolicy `
+        -ResolvedQuestionsContext $ResolvedQuestionsContext
+
+    $gateSessionId = New-ProviderSession
+    $gateReply = ""
+    $gateError = $null
+    $gateRateLimit = $null
+
+    try {
+        $gateStreamArgs = @{
+            Prompt = $gatePrompt
+            Model = $Model
+            SessionId = $gateSessionId
+            PersistSession = $false
+            CaptureAssistantText = $true
+        }
+        if ($ShowDebug) { $gateStreamArgs['ShowDebugJson'] = $true }
+        if ($ShowVerbose) { $gateStreamArgs['ShowVerbose'] = $true }
+
+        $gateReply = Invoke-ProviderStream @gateStreamArgs
+        $gateRateLimit = Get-LastProviderRateLimitInfo
+    } catch {
+        $gateError = $_.Exception.Message
+        Write-Status "Clarification gate error: $gateError" -Type Error
+    } finally {
+        try { Remove-ProviderSession -SessionId $gateSessionId -ProjectRoot $ProjectRoot | Out-Null } catch {}
+    }
+
+    $gateOutcome = Get-WorkspaceTaskStatus -BotRoot $BotRoot -TaskId $Task.id -Statuses @('needs-input', 'skipped')
+    if ($gateOutcome) {
+        Write-Status "Clarification gate complete (status: $gateOutcome)" -Type Complete
+        return @{
+            action = 'complete'
+            outcome = $gateOutcome
+        }
+    }
+
+    if (-not $gateError -and "$gateReply".Trim() -eq 'NO_CLARIFICATION_NEEDED') {
+        return @{
+            action = 'continue'
+            outcome = 'clear'
+        }
+    }
+
+    if ($gateRateLimit) {
+        Write-Status "Clarification gate rate-limited - continuing with standard analysis prompt" -Type Warn
+        return @{
+            action = 'continue'
+            outcome = 'gate-bypassed'
+        }
+    }
+
+    if ($gateError) {
+        Write-Status "Clarification gate unavailable - continuing with standard analysis prompt" -Type Warn
+        return @{
+            action = 'continue'
+            outcome = 'gate-bypassed'
+        }
+    }
+
+    if ($gateReply) {
+        $preview = Get-PreviewText ($gateReply.Trim()) 200
+        Write-Status "Clarification gate returned non-compliant output - continuing with standard analysis prompt" -Type Warn
+        Write-Diag "Clarification gate response preview: $preview"
+    } else {
+        Write-Status "Clarification gate returned no decision - continuing with standard analysis prompt" -Type Warn
+    }
+
+    return @{
+        action = 'continue'
+        outcome = 'gate-bypassed'
+    }
+}
+
 function Set-ProcessLock {
     param([string]$LockType)
     $lockPath = Join-Path $controlDir "launch-$LockType.lock"
@@ -344,6 +584,8 @@ function Get-NextTodoTask {
                         priority = [int]$content.priority
                         effort = $content.effort
                         category = $content.category
+                        clarification_policy = $content.clarification_policy
+                        effective_clarification_policy = Get-EffectiveTaskClarificationPolicy -Task $content
                     }
                     if ($Verbose.IsPresent) {
                         $taskObj.description = $content.description
@@ -404,6 +646,8 @@ function Get-NextWorkflowTask {
                         priority = [int]$content.priority
                         effort = $content.effort
                         category = $content.category
+                        clarification_policy = $content.clarification_policy
+                        effective_clarification_policy = Get-EffectiveTaskClarificationPolicy -Task $content
                     }
                     if ($Verbose.IsPresent) {
                         $taskObj.description = $content.description
@@ -941,6 +1185,10 @@ if ($Type -in @('analysis', 'execution')) {
             $processData.claude_session_id = $claudeSessionId
             Write-ProcessFile -Id $procId -Data $processData
 
+            $analysisOutcome = $null
+            $skipPromptExecution = $false
+            $taskSuccess = $false
+
             # Build prompt
             if ($Type -eq 'execution') {
                 $prompt = Build-TaskPrompt `
@@ -981,8 +1229,9 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 $prompt = $prompt -replace '\{\{TASK_PRIORITY\}\}', $task.priority
                 $prompt = $prompt -replace '\{\{TASK_EFFORT\}\}', $task.effort
                 $prompt = $prompt -replace '\{\{TASK_DESCRIPTION\}\}', $task.description
-                $niValue = if ("$($task.needs_interview)" -eq 'true') { 'true' } else { 'false' }
-                Write-Status "needs_interview raw=$($task.needs_interview) resolved=$niValue" -Type Info
+                $effectiveClarificationPolicy = Get-EffectiveTaskClarificationPolicy -Task $task
+                $niValue = if (Get-AnalysisPromptNeedsInterviewFlag -Task $task) { 'true' } else { 'false' }
+                Write-Status "needs_interview raw=$($task.needs_interview) effective_policy=$effectiveClarificationPolicy resolved=$niValue" -Type Info
                 $prompt = $prompt -replace '\{\{NEEDS_INTERVIEW\}\}', $niValue
                 $acceptanceCriteria = if ($task.acceptance_criteria) { ($task.acceptance_criteria | ForEach-Object { "- $_" }) -join "`n" } else { "No specific acceptance criteria defined." }
                 $prompt = $prompt -replace '\{\{ACCEPTANCE_CRITERIA\}\}', $acceptanceCriteria
@@ -992,17 +1241,39 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 $branchForPrompt = "main"
                 $prompt = $prompt -replace '\{\{BRANCH_NAME\}\}', $branchForPrompt
 
-                # Build resolved questions context for resumed tasks
-                $isResumedTask = $task.status -eq 'analysing'
-                $resolvedQuestionsContext = ""
-                if ($isResumedTask -and $task.questions_resolved) {
-                    $resolvedQuestionsContext = "`n## Previously Resolved Questions`n`n"
-                    $resolvedQuestionsContext += "This task was previously paused for human input. The following questions have been answered:`n`n"
-                    foreach ($q in $task.questions_resolved) {
-                        $resolvedQuestionsContext += "**Q:** $($q.question)`n"
-                        $resolvedQuestionsContext += "**A:** $($q.answer)`n`n"
+                $resolvedQuestionsContext = Get-ResolvedQuestionsContext -Task $task
+                $clarificationPolicyGuidance = switch ($effectiveClarificationPolicy) {
+                    'required' { "- Clarification policy is ``required``: do not finish analysis until at least one clarification question has been asked and answered.`n" }
+                    'strict' { "- Clarification policy is ``strict``: prefer ``task_mark_needs_input`` over assumptions for most non-trivial ambiguity.`n" }
+                    'balanced' { "- Clarification policy is ``balanced``: if ambiguity could materially change what gets built, pause with ``task_mark_needs_input`` instead of guessing.`n" }
+                    default { "" }
+                }
+
+                if (Test-ShouldRunClarificationGate -Task $task) {
+                    Write-Header "Clarification Gate"
+                    $gateResult = Invoke-ClarificationGate `
+                        -Task $task `
+                        -SessionId $sessionId `
+                        -ProcessId $procId `
+                        -InstanceType 'analysis' `
+                        -ClarificationPolicy $effectiveClarificationPolicy `
+                        -ResolvedQuestionsContext $resolvedQuestionsContext `
+                        -Model $claudeModelName `
+                        -BotRoot $botRoot `
+                        -ProjectRoot $projectRoot `
+                        -ShowDebug:$ShowDebug `
+                        -ShowVerbose:$ShowVerbose
+
+                    switch ($gateResult.action) {
+                        'complete' {
+                            $taskSuccess = $true
+                            $analysisOutcome = $gateResult.outcome
+                            $skipPromptExecution = $true
+                        }
+                        'abort' {
+                            $skipPromptExecution = $true
+                        }
                     }
-                    $resolvedQuestionsContext += "Use these answers to guide your analysis. The task is already in ``analysing`` status - do NOT call ``task_mark_analysing`` again.`n"
                 }
 
                 $fullPrompt = @"
@@ -1021,6 +1292,7 @@ Analyse task $($task.id) completely. When analysis is finished:
 - If all context is gathered: Call task_mark_analysed with the full analysis object
 - If you need human input: Call task_mark_needs_input with a question or split_proposal
 - If blocked by issues: Call task_mark_skipped with a reason
+$clarificationPolicyGuidance
 
 Do NOT implement the task. Your job is research and preparation only.
 "@
@@ -1028,11 +1300,10 @@ Do NOT implement the task. Your job is research and preparation only.
 
             # Invoke Claude with retries
             $attemptNumber = 0
-            $taskSuccess = $false
 
             if ($worktreePath) { Push-Location $worktreePath }
             try {
-            while ($attemptNumber -le $maxRetriesPerTask) {
+            while (-not $skipPromptExecution -and $attemptNumber -le $maxRetriesPerTask) {
                 $attemptNumber++
 
                 if ($attemptNumber -gt 1) {
@@ -1473,7 +1744,8 @@ elseif ($Type -eq 'workflow') {
             $analysisPrompt = $analysisPrompt -replace '\{\{TASK_PRIORITY\}\}', $task.priority
             $analysisPrompt = $analysisPrompt -replace '\{\{TASK_EFFORT\}\}', $task.effort
             $analysisPrompt = $analysisPrompt -replace '\{\{TASK_DESCRIPTION\}\}', $task.description
-            $niValue = if ("$($task.needs_interview)" -eq 'true') { 'true' } else { 'false' }
+            $effectiveClarificationPolicy = Get-EffectiveTaskClarificationPolicy -Task $task
+            $niValue = if (Get-AnalysisPromptNeedsInterviewFlag -Task $task) { 'true' } else { 'false' }
             $analysisPrompt = $analysisPrompt -replace '\{\{NEEDS_INTERVIEW\}\}', $niValue
             $acceptanceCriteria = if ($task.acceptance_criteria) { ($task.acceptance_criteria | ForEach-Object { "- $_" }) -join "`n" } else { "No specific acceptance criteria defined." }
             $analysisPrompt = $analysisPrompt -replace '\{\{ACCEPTANCE_CRITERIA\}\}', $acceptanceCriteria
@@ -1481,17 +1753,12 @@ elseif ($Type -eq 'workflow') {
             $analysisPrompt = $analysisPrompt -replace '\{\{TASK_STEPS\}\}', $steps
             $analysisPrompt = $analysisPrompt -replace '\{\{BRANCH_NAME\}\}', 'main'
 
-            # Build resolved questions context for resumed tasks
-            $isResumedTask = $task.status -eq 'analysing'
-            $resolvedQuestionsContext = ""
-            if ($isResumedTask -and $task.questions_resolved) {
-                $resolvedQuestionsContext = "`n## Previously Resolved Questions`n`n"
-                $resolvedQuestionsContext += "This task was previously paused for human input. The following questions have been answered:`n`n"
-                foreach ($q in $task.questions_resolved) {
-                    $resolvedQuestionsContext += "**Q:** $($q.question)`n"
-                    $resolvedQuestionsContext += "**A:** $($q.answer)`n`n"
-                }
-                $resolvedQuestionsContext += "Use these answers to guide your analysis. The task is already in ``analysing`` status - do NOT call ``task_mark_analysing`` again.`n"
+            $resolvedQuestionsContext = Get-ResolvedQuestionsContext -Task $task
+            $clarificationPolicyGuidance = switch ($effectiveClarificationPolicy) {
+                'required' { "- Clarification policy is ``required``: do not finish analysis until at least one clarification question has been asked and answered.`n" }
+                'strict' { "- Clarification policy is ``strict``: prefer ``task_mark_needs_input`` over assumptions for most non-trivial ambiguity.`n" }
+                'balanced' { "- Clarification policy is ``balanced``: if ambiguity could materially change what gets built, pause with ``task_mark_needs_input`` instead of guessing.`n" }
+                default { "" }
             }
 
             # Use analysis model from settings
@@ -1514,6 +1781,7 @@ Analyse task $($task.id) completely. When analysis is finished:
 - If all context is gathered: Call task_mark_analysed with the full analysis object
 - If you need human input: Call task_mark_needs_input with a question or split_proposal
 - If blocked by issues: Call task_mark_skipped with a reason
+$clarificationPolicyGuidance
 
 Do NOT implement the task. Your job is research and preparation only.
 "@
@@ -1525,9 +1793,38 @@ Do NOT implement the task. Your job is research and preparation only.
             Write-ProcessFile -Id $procId -Data $processData
 
             $analysisSuccess = $false
+            $analysisOutcome = $null
             $analysisAttempt = 0
+            $abortAnalysis = $false
 
-            while ($analysisAttempt -le $maxRetriesPerTask) {
+            if (Test-ShouldRunClarificationGate -Task $task) {
+                Write-Header "Clarification Gate"
+                $gateResult = Invoke-ClarificationGate `
+                    -Task $task `
+                    -SessionId $sessionId `
+                    -ProcessId $procId `
+                    -InstanceType 'workflow (analysis phase)' `
+                    -ClarificationPolicy $effectiveClarificationPolicy `
+                    -ResolvedQuestionsContext $resolvedQuestionsContext `
+                    -Model $analysisModelName `
+                    -BotRoot $botRoot `
+                    -ProjectRoot $projectRoot `
+                    -ShowDebug:$ShowDebug `
+                    -ShowVerbose:$ShowVerbose
+
+                switch ($gateResult.action) {
+                    'complete' {
+                        $analysisSuccess = $true
+                        $analysisOutcome = $gateResult.outcome
+                    }
+                    'abort' {
+                        Write-Diag "Clarification gate aborted analysis for task $($task.id)"
+                        $abortAnalysis = $true
+                    }
+                }
+            }
+
+            while (-not $analysisSuccess -and -not $abortAnalysis -and $analysisAttempt -le $maxRetriesPerTask) {
                 $analysisAttempt++
                 if (Test-ProcessStopSignal -Id $procId) { break }
 

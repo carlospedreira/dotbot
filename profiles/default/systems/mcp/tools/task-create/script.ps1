@@ -1,3 +1,5 @@
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\runtime\modules\ClarificationPolicy.psm1") -Force
+
 function Invoke-TaskCreate {
     param(
         [hashtable]$Arguments
@@ -15,6 +17,7 @@ function Invoke-TaskCreate {
     $applicableStandards = $Arguments['applicable_standards']
     $applicableAgents = $Arguments['applicable_agents']
     $needsInterview = $Arguments['needs_interview'] -eq $true
+    $requestedClarificationPolicy = $Arguments['clarification_policy']
     $humanHours = $Arguments['human_hours']
     $aiHours = $Arguments['ai_hours']
     $workingDir = $Arguments['working_dir']
@@ -61,8 +64,11 @@ function Invoke-TaskCreate {
     if (-not $steps) { $steps = @() }
     if (-not $applicableStandards) { $applicableStandards = @() }
     if (-not $applicableAgents) { $applicableAgents = @() }
-    # needsInterview is already a boolean, no default needed
-    
+    $clarificationPolicy = Resolve-NewTaskClarificationPolicy `
+        -RequestedPolicy $requestedClarificationPolicy `
+        -NeedsInterview $needsInterview
+    $legacyNeedsInterview = Get-LegacyNeedsInterviewFlag -ClarificationPolicy $clarificationPolicy
+
     # Validate dependencies exist
     if ($dependencies -and $dependencies.Count -gt 0) {
         # Import task index module
@@ -127,7 +133,8 @@ function Invoke-TaskCreate {
         steps = $steps
         applicable_standards = $applicableStandards
         applicable_agents = $applicableAgents
-        needs_interview = $needsInterview
+        clarification_policy = $clarificationPolicy
+        needs_interview = $legacyNeedsInterview
         human_hours = $humanHours
         ai_hours = $aiHours
         working_dir = $workingDir

@@ -103,6 +103,7 @@ function Get-BotState {
     # Dot-source MCP session tools (must be in calling scope, not init scope)
     . "$botRoot\systems\mcp\tools\session-get-state\script.ps1"
     . "$botRoot\systems\mcp\tools\session-get-stats\script.ps1"
+    Import-Module "$botRoot\systems\runtime\modules\ClarificationPolicy.psm1" -Force
 
     # Check if we have a valid cache and no changes since last build
     $cacheMaxAge = 2  # seconds
@@ -140,6 +141,7 @@ function Get-BotState {
     $currentTask = $null
     if ($inProgressTasks.Count -gt 0) {
         $taskContent = Get-Content $inProgressTasks[0].FullName -Raw | ConvertFrom-Json
+        $effectiveClarificationPolicy = Get-EffectiveTaskClarificationPolicy -Task $taskContent
         $currentTask = @{
             id = $taskContent.id
             name = $taskContent.name
@@ -158,6 +160,8 @@ function Get-BotState {
             updated_at = $taskContent.updated_at
             started_at = $taskContent.started_at
             analysis = $taskContent.analysis
+            clarification_policy = $taskContent.clarification_policy
+            effective_clarification_policy = $effectiveClarificationPolicy
             questions_resolved = $taskContent.questions_resolved
             analysis_started_at = $taskContent.analysis_started_at
             analysis_completed_at = $taskContent.analysis_completed_at
@@ -172,6 +176,7 @@ function Get-BotState {
             ForEach-Object {
                 try {
                     $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $effectiveClarificationPolicy = Get-EffectiveTaskClarificationPolicy -Task $taskContent
                     @{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -200,6 +205,8 @@ function Get-BotState {
                         activity_log = $taskContent.activity_log
                         execution_activity_log = $taskContent.execution_activity_log
                         analysis = $taskContent.analysis
+                        clarification_policy = $taskContent.clarification_policy
+                        effective_clarification_policy = $effectiveClarificationPolicy
                         analysis_started_at = $taskContent.analysis_started_at
                         analysis_completed_at = $taskContent.analysis_completed_at
                         analysed_by = $taskContent.analysed_by
@@ -219,6 +226,7 @@ function Get-BotState {
             ForEach-Object {
                 try {
                     $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $effectiveClarificationPolicy = Get-EffectiveTaskClarificationPolicy -Task $taskContent
                     @{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -233,6 +241,8 @@ function Get-BotState {
                         applicable_agents = @($taskContent.applicable_agents)
                         applicable_standards = @($taskContent.applicable_standards)
                         analysis = $taskContent.analysis
+                        clarification_policy = $taskContent.clarification_policy
+                        effective_clarification_policy = $effectiveClarificationPolicy
                         questions_resolved = $taskContent.questions_resolved
                         analysis_started_at = $taskContent.analysis_started_at
                         analysis_completed_at = $taskContent.analysis_completed_at
@@ -254,6 +264,7 @@ function Get-BotState {
             ForEach-Object {
                 try {
                     $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $effectiveClarificationPolicy = Get-EffectiveTaskClarificationPolicy -Task $taskContent
                     @{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -262,6 +273,8 @@ function Get-BotState {
                         priority = $taskContent.priority
                         effort = $taskContent.effort
                         status = $taskContent.status
+                        clarification_policy = $taskContent.clarification_policy
+                        effective_clarification_policy = $effectiveClarificationPolicy
                     }
                 } catch { $null }
             } | Where-Object { $_ -ne $null }
@@ -274,6 +287,7 @@ function Get-BotState {
             ForEach-Object {
                 try {
                     $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $effectiveClarificationPolicy = Get-EffectiveTaskClarificationPolicy -Task $taskContent
                     @{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -282,7 +296,10 @@ function Get-BotState {
                         priority = $taskContent.priority
                         effort = $taskContent.effort
                         status = $taskContent.status
+                        clarification_policy = $taskContent.clarification_policy
+                        effective_clarification_policy = $effectiveClarificationPolicy
                         pending_question = $taskContent.pending_question
+                        split_proposal = $taskContent.split_proposal
                         questions_resolved = $taskContent.questions_resolved
                     }
                 } catch { $null }
@@ -296,6 +313,7 @@ function Get-BotState {
             ForEach-Object {
                 try {
                     $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $effectiveClarificationPolicy = Get-EffectiveTaskClarificationPolicy -Task $taskContent
                     [PSCustomObject]@{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -304,6 +322,8 @@ function Get-BotState {
                         priority = $taskContent.priority
                         effort = $taskContent.effort
                         status = $taskContent.status
+                        clarification_policy = $taskContent.clarification_policy
+                        effective_clarification_policy = $effectiveClarificationPolicy
                         priority_num = [int]$taskContent.priority
                     }
                 } catch { $null }
@@ -330,6 +350,7 @@ function Get-BotState {
             ForEach-Object {
                 try {
                     $taskContent = Get-Content $_.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $effectiveClarificationPolicy = Get-EffectiveTaskClarificationPolicy -Task $taskContent
                     [PSCustomObject]@{
                         id = $taskContent.id
                         name = $taskContent.name
@@ -345,6 +366,8 @@ function Get-BotState {
                         roadmap_dependencies = Get-RoadmapTaskDependencies -Task $taskContent -DependencyMap $roadmapDependencyMap
                         applicable_agents = $taskContent.applicable_agents
                         applicable_standards = $taskContent.applicable_standards
+                        clarification_policy = $taskContent.clarification_policy
+                        effective_clarification_policy = $effectiveClarificationPolicy
                         plan_path = $taskContent.plan_path
                         created_at = $taskContent.created_at
                         updated_at = $taskContent.updated_at
@@ -374,6 +397,8 @@ function Get-BotState {
                     roadmap_dependencies = $_.roadmap_dependencies
                     applicable_agents = $_.applicable_agents
                     applicable_standards = $_.applicable_standards
+                    clarification_policy = $_.clarification_policy
+                    effective_clarification_policy = $_.effective_clarification_policy
                     plan_path = $_.plan_path
                     created_at = $_.created_at
                     updated_at = $_.updated_at

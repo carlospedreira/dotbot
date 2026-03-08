@@ -417,9 +417,21 @@ function Submit-SplitApproval {
 function Start-TaskCreation {
     param(
         [Parameter(Mandatory)] [string]$UserPrompt,
-        [bool]$NeedsInterview = $false
+        [bool]$NeedsInterview = $false,
+        [string]$ClarificationPolicy
     )
     $botRoot = $script:Config.BotRoot
+    $clarificationModule = Join-Path $botRoot "systems\runtime\modules\ClarificationPolicy.psm1"
+    if (Test-Path $clarificationModule) {
+        Import-Module $clarificationModule -Force
+    }
+
+    $settingsPath = Join-Path $botRoot "defaults\settings.default.json"
+    $resolvedClarificationPolicy = Resolve-NewTaskClarificationPolicy `
+        -RequestedPolicy $ClarificationPolicy `
+        -NeedsInterview $NeedsInterview `
+        -SettingsPath $settingsPath
+    $legacyNeedsInterview = Get-LegacyNeedsInterviewFlag -ClarificationPolicy $resolvedClarificationPolicy
 
     # Compose the system prompt for Claude to create a task
     $systemPrompt = @"
@@ -440,12 +452,13 @@ Task creation guidelines:
 - priority: Default to 50 (analyse loop will refine)
 - acceptance_criteria: Leave empty or minimal (analyse loop will define)
 - steps: Leave empty (analyse loop will define)
-- needs_interview: Set to $NeedsInterview (user wants to be interviewed for clarification)
+- clarification_policy: Set to $resolvedClarificationPolicy
+- needs_interview: Set to $legacyNeedsInterview only for backward compatibility
 
 User's request to capture:
 $UserPrompt
 
-Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsInterview. Do not ask questions or provide commentary.
+Now create the task using mcp__dotbot__task_create with clarification_policy=$resolvedClarificationPolicy and needs_interview=$legacyNeedsInterview. Do not ask questions or provide commentary.
 "@
 
     # Launch via process manager

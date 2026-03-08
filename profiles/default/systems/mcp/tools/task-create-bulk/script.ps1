@@ -1,3 +1,5 @@
+Import-Module (Join-Path $global:DotbotProjectRoot ".bot\systems\runtime\modules\ClarificationPolicy.psm1") -Force
+
 function Invoke-TaskCreateBulk {
     param(
         [hashtable]$Arguments
@@ -93,6 +95,10 @@ function Invoke-TaskCreateBulk {
             $steps = if ($task.steps) { $task.steps } else { @() }
             $applicableStandards = if ($task.applicable_standards) { $task.applicable_standards } else { @() }
             $applicableAgents = if ($task.applicable_agents) { $task.applicable_agents } else { @() }
+            $clarificationPolicy = Resolve-NewTaskClarificationPolicy `
+                -RequestedPolicy $task.clarification_policy `
+                -NeedsInterview ($task.needs_interview -eq $true)
+            $legacyNeedsInterview = Get-LegacyNeedsInterviewFlag -ClarificationPolicy $clarificationPolicy
             
             # Validate dependencies exist
             if ($dependencies -and $dependencies.Count -gt 0) {
@@ -157,7 +163,8 @@ function Invoke-TaskCreateBulk {
                 steps = $steps
                 applicable_standards = $applicableStandards
                 applicable_agents = $applicableAgents
-                needs_interview = ($task.needs_interview -eq $true)
+                clarification_policy = $clarificationPolicy
+                needs_interview = $legacyNeedsInterview
                 group_id = $task.group_id
                 human_hours = $task.human_hours
                 ai_hours = $task.ai_hours

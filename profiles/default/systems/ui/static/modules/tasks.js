@@ -61,6 +61,56 @@ function findTaskById(id) {
     return null;
 }
 
+function getTaskStatusLabel(task) {
+    if (!task) return 'unknown';
+
+    if (task.status === 'needs-input') {
+        return getNeedsInputStatusLabel(task);
+    }
+
+    return task.status || 'unknown';
+}
+
+function getNeedsInputStatusLabel(task) {
+    if (!task) return 'needs-input';
+
+    if (task.split_proposal) {
+        return 'awaiting split approval';
+    }
+
+    if (task.pending_question?.id === 'merge-conflict') {
+        return 'awaiting merge resolution';
+    }
+
+    if (task.pending_question) {
+        const effectivePolicy = task.effective_clarification_policy;
+        if (effectivePolicy && !['legacy', 'off'].includes(effectivePolicy)) {
+            return 'awaiting clarification';
+        }
+        return 'awaiting input';
+    }
+
+    return 'needs-input';
+}
+
+function buildTaskStatusBadges(task) {
+    if (!task) return '';
+
+    let badges = '';
+    const effectivePolicy = task.effective_clarification_policy;
+    if (effectivePolicy && effectivePolicy !== 'legacy') {
+        badges += `<span class="task-badge badge-needs-input">Clarification: ${escapeHtml(effectivePolicy)}</span>`;
+    } else if (task.needs_interview) {
+        badges += '<span class="task-badge badge-needs-input">Legacy Interview</span>';
+    }
+
+    if (task.notification) {
+        badges += `<span class="task-badge badge-notified">Sent via ${escapeHtml(task.notification.channel || 'ext')}</span>`;
+    }
+
+    return badges;
+}
+
 /**
  * Show task details modal with sidebar navigation
  * @param {Object} task - Task object to display
@@ -187,7 +237,7 @@ function buildOverviewSection(task) {
     if (task.status) {
         html += `<div class="task-meta-item">
             <span class="task-meta-label">Status</span>
-            <span class="task-meta-value status-${escapeHtml(task.status)}">${escapeHtml(task.status)}${task.needs_interview ? '<span class="task-badge badge-needs-input">Needs Interview</span>' : ''}${task.notification ? `<span class="task-badge badge-notified">Sent via ${escapeHtml(task.notification.channel || 'ext')}</span>` : ''}</span>
+            <span class="task-meta-value status-${escapeHtml(task.status)}">${escapeHtml(getTaskStatusLabel(task))}${buildTaskStatusBadges(task)}</span>
         </div>`;
     }
     if (task.category) {
@@ -206,6 +256,12 @@ function buildOverviewSection(task) {
         html += `<div class="task-meta-item">
             <span class="task-meta-label">Effort</span>
             <span class="task-meta-value">${escapeHtml(task.effort)}</span>
+        </div>`;
+    }
+    if (task.effective_clarification_policy && task.effective_clarification_policy !== 'legacy') {
+        html += `<div class="task-meta-item">
+            <span class="task-meta-label">Clarification</span>
+            <span class="task-meta-value">${escapeHtml(task.effective_clarification_policy)}</span>
         </div>`;
     }
     html += `</div>`;
@@ -878,8 +934,6 @@ function initPlanModalClose() {
         }
     });
 }
-
-
 
 
 

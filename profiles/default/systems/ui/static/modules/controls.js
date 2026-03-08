@@ -14,6 +14,7 @@ let currentLoopMode = 'both';
  */
 let ANALYSIS_MODEL_OPTIONS = [];
 let EXECUTION_MODEL_OPTIONS = [];
+window.currentAnalysisConfig = null;
 
 /**
  * Current provider data from /api/providers
@@ -648,6 +649,13 @@ const ANALYSIS_MODE_OPTIONS = [
     { id: 'batch', name: 'Batch', badge: null, description: 'Analyse all pending tasks in a single batch run' }
 ];
 
+const CLARIFICATION_POLICY_OPTIONS = [
+    { id: 'off', name: 'Off', badge: null, description: 'Proceed with current legacy analysis behavior for new tasks.' },
+    { id: 'balanced', name: 'Balanced', badge: 'Recommended', description: 'Pause when ambiguity could materially change what gets built.' },
+    { id: 'strict', name: 'Strict', badge: null, description: 'Pause for most non-trivial ambiguity before analysis continues.' },
+    { id: 'required', name: 'Required', badge: null, description: 'New tasks must ask at least one clarification question before analysis completes.' }
+];
+
 /**
  * Load analysis settings from server
  */
@@ -655,10 +663,14 @@ async function loadAnalysisSettings() {
     try {
         const response = await fetch(`${API_BASE}/api/config/analysis`);
         const data = await response.json();
+        window.currentAnalysisConfig = data;
 
         // Auto-approve toggle
         const toggle = document.getElementById('setting-auto-approve-splits');
         if (toggle) toggle.checked = data.auto_approve_splits || false;
+
+        // New task clarification policy
+        selectClarificationPolicy(data.default_new_task_clarification_policy || 'balanced', false);
 
         // Effort threshold
         selectEffortThreshold(data.split_threshold_effort || 'XL', false);
@@ -760,6 +772,42 @@ function initAnalysisModeSelector() {
     });
 }
 
+function initClarificationPolicySelector() {
+    const grid = document.getElementById('clarification-policy-grid');
+    if (!grid) return;
+
+    grid.innerHTML = CLARIFICATION_POLICY_OPTIONS.map(opt => `
+        <div class="model-option" data-clarification-policy="${opt.id}">
+            <div class="model-option-header">
+                <span class="model-option-name">${opt.name}</span>
+                ${opt.badge ? `<span class="model-option-badge">${opt.badge}</span>` : ''}
+            </div>
+            <div class="model-option-description">${opt.description}</div>
+        </div>
+    `).join('');
+
+    grid.querySelectorAll('.model-option').forEach(option => {
+        option.addEventListener('click', () => {
+            selectClarificationPolicy(option.dataset.clarificationPolicy, true);
+        });
+    });
+}
+
+function selectClarificationPolicy(id, save = true) {
+    const grid = document.getElementById('clarification-policy-grid');
+    if (!grid) return;
+
+    grid.querySelectorAll('.model-option').forEach(option => {
+        option.classList.toggle('active', option.dataset.clarificationPolicy === id);
+    });
+
+    if (save) {
+        saveAnalysisSetting('default_new_task_clarification_policy', id);
+        window.currentAnalysisConfig = window.currentAnalysisConfig || {};
+        window.currentAnalysisConfig.default_new_task_clarification_policy = id;
+    }
+}
+
 /**
  * Select analysis mode and update UI
  */
@@ -807,6 +855,7 @@ function initAnalysisSettings() {
     }
 
     // Grid selectors
+    initClarificationPolicySelector();
     initEffortThresholdSelector();
     initAnalysisModeSelector();
 

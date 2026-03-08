@@ -65,6 +65,9 @@ function Process-StreamLine {
             # Streaming text delta
             if ($evt.delta) {
                 [void]$State.assistantText.Append($evt.delta)
+                if ($State.fullAssistantText) {
+                    [void]$State.fullAssistantText.Append($evt.delta)
+                }
             }
             return 'text'
         }
@@ -73,6 +76,9 @@ function Process-StreamLine {
             # If content field present (full message without prior deltas), capture it
             if ($evt.content -and $State.assistantText.Length -eq 0) {
                 [void]$State.assistantText.Append($evt.content)
+                if ($State.fullAssistantText) {
+                    [void]$State.fullAssistantText.Append($evt.content)
+                }
             }
 
             # Full message completed — flush accumulated text

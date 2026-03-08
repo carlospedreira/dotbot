@@ -433,6 +433,8 @@ function Invoke-ClaudeStream {
 
         [switch]$PersistSession,
 
+        [switch]$CaptureAssistantText,
+
         [switch]$ShowDebugJson,
 
         [switch]$ShowVerbose
@@ -453,6 +455,7 @@ function Invoke-ClaudeStream {
     $lastUnknown = Get-Date
     $unknownEvery = [TimeSpan]::FromSeconds($UnknownEverySeconds)
     $assistantText = New-Object System.Text.StringBuilder
+    $fullAssistantText = New-Object System.Text.StringBuilder
     $pendingToolCalls = @()
     
     # Token usage tracking
@@ -672,6 +675,7 @@ function Invoke-ClaudeStream {
 
         if ($text) {
             [void]$assistantText.Append($text)
+            [void]$fullAssistantText.Append($text)
             return
         }
 
@@ -909,6 +913,10 @@ function Invoke-ClaudeStream {
     } finally {
         # Restore original output encoding
         [Console]::OutputEncoding = $prevOutputEncoding
+    }
+
+    if ($CaptureAssistantText) {
+        return $fullAssistantText.ToString()
     }
 }
 

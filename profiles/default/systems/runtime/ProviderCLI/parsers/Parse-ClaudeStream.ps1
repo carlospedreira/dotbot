@@ -80,6 +80,9 @@ function Process-StreamLine {
 
     if ($text) {
         [void]$State.assistantText.Append($text)
+        if ($State.fullAssistantText) {
+            [void]$State.fullAssistantText.Append($text)
+        }
         return 'text'
     }
 

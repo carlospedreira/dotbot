@@ -75,6 +75,7 @@ function Invoke-TaskAnswerQuestion {
     $resolvedEntry = @{
         id = $pendingQuestion.id
         question = $pendingQuestion.question
+        kind = $pendingQuestion.kind
         answer = $resolvedAnswer
         answer_type = $answerType
         asked_at = $pendingQuestion.asked_at
