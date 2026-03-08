@@ -20,13 +20,15 @@ $script:TaskIndex = @{
     DoneIds = @()       # Quick lookup for dependency checking (by id)
     DoneNames = @()     # Quick lookup for dependency checking (by name)
     DoneSlugs = @()     # Quick lookup for dependency checking (by slug)
+    IgnoreMap = @{}     # Effective ignore state for todo tasks
     BaseDir = $null
 }
 
 function Initialize-TaskIndex {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$TasksBaseDir
+        [string]$TasksBaseDir,
+        [array]$TodoTasks
     )
 
     # Ensure directory exists
@@ -37,7 +39,340 @@ function Initialize-TaskIndex {
     $script:TaskIndex.BaseDir = $TasksBaseDir
 }
 
+function Get-IgnoreTaskPriorityValue {
+    param(
+        [object]$Task
+    )
+
+    try {
+        if ($null -ne $Task.priority -and "$($Task.priority)".Trim()) {
+            return [int]$Task.priority
+        }
+    } catch {
+        # Leave malformed priorities at the end of ordinal alias resolution.
+    }
+
+    return [int]::MaxValue
+}
+
+function Add-IgnoreReferenceAlias {
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$ReferenceMap,
+        [Parameter(Mandatory)]
+        [string]$TaskId,
+        [object]$Alias
+    )
+
+    if ($null -eq $Alias) {
+        return
+    }
+
+    $normalizedAlias = "$Alias".Trim().ToLower()
+    if (-not $normalizedAlias) {
+        return
+    }
+
+    $ReferenceMap[$normalizedAlias] = $TaskId
+}
+
+function Get-IgnoreDependencyTokens {
+    param(
+        [object]$Dependency
+    )
+
+    if ($null -eq $Dependency) {
+        return @()
+    }
+
+    $rawDependency = "$Dependency".Trim()
+    if (-not $rawDependency) {
+        return @()
+    }
+
+    $tokens = [System.Collections.Generic.List[string]]::new()
+
+    function Add-IgnoreDependencyToken {
+        param(
+            [string]$Value
+        )
+
+        if (-not $Value) {
+            return
+        }
+
+        $normalizedValue = $Value.Trim().ToLower()
+        if ($normalizedValue -and -not $tokens.Contains($normalizedValue)) {
+            $null = $tokens.Add($normalizedValue)
+        }
+    }
+
+    Add-IgnoreDependencyToken -Value $rawDependency
+
+    $ordinalMatch = [regex]::Match($rawDependency, '^tasks?\s+(.+)$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($ordinalMatch.Success) {
+        $ordinalExpression = $ordinalMatch.Groups[1].Value.Trim()
+        Add-IgnoreDependencyToken -Value $ordinalExpression
+
+        foreach ($part in ($ordinalExpression -split '\s*,\s*')) {
+            $normalizedPart = [regex]::Replace($part, '^tasks?\s+', '', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Trim()
+            if (-not $normalizedPart) {
+                continue
+            }
+
+            Add-IgnoreDependencyToken -Value $normalizedPart
+            Add-IgnoreDependencyToken -Value "task $normalizedPart"
+        }
+
+        return @($tokens)
+    }
+
+    foreach ($part in ($rawDependency -split '\s*,\s*')) {
+        Add-IgnoreDependencyToken -Value $part
+    }
+
+    return @($tokens)
+}
+
+function Get-IgnoreRoadmapDependencyMap {
+    param(
+        [string]$TasksBaseDir
+    )
+
+    $workspaceDir = Split-Path -Parent $TasksBaseDir
+    $overviewPath = Join-Path $workspaceDir "product\roadmap-overview.md"
+    $dependencyMap = @{}
+    if (-not (Test-Path $overviewPath)) {
+        return $dependencyMap
+    }
+
+    foreach ($line in @(Get-Content -Path $overviewPath -ErrorAction SilentlyContinue)) {
+        if ($line -notmatch '^\|\s*\d+\s*\|') {
+            continue
+        }
+
+        $cells = ($line.Trim().Trim('|') -split '\s*\|\s*')
+        if ($cells.Count -lt 5) {
+            continue
+        }
+
+        $methodologyMatch = [regex]::Match($cells[2], '`([^`]+)`')
+        if (-not $methodologyMatch.Success) {
+            continue
+        }
+
+        $methodologyKey = $methodologyMatch.Groups[1].Value.Trim().ToLower()
+        if (-not $methodologyKey) {
+            continue
+        }
+
+        $dependencyText = $cells[3].Trim()
+        if (-not $dependencyText -or $dependencyText -match '^(none|n/a)$') {
+            $dependencyMap[$methodologyKey] = @()
+            continue
+        }
+
+        $dependencyMap[$methodologyKey] = @($dependencyText)
+    }
+
+    return $dependencyMap
+}
+
+function Get-ResolvedIgnoreDependencies {
+    param(
+        [Parameter(Mandatory)]
+        [object]$Task,
+        [Parameter(Mandatory)]
+        [hashtable]$RoadmapDependencyMap
+    )
+
+    $explicitDependencies = @(@($Task.dependencies) | Where-Object { $null -ne $_ -and "$($_)".Trim() })
+    if ($explicitDependencies.Count -gt 0) {
+        return $explicitDependencies
+    }
+
+    $researchPrompt = "$($Task.research_prompt)".Trim().ToLower()
+    if ($researchPrompt -and $RoadmapDependencyMap.ContainsKey($researchPrompt)) {
+        return @($RoadmapDependencyMap[$researchPrompt])
+    }
+
+    return @()
+}
+
+function Get-TaskIgnoreLookup {
+    param(
+        [string]$TasksBaseDir,
+        [array]$TodoTasks
+    )
+
+    $todoDir = Join-Path $TasksBaseDir 'todo'
+    if (-not (Test-Path $todoDir)) {
+        return @{}
+    }
+
+    $tasks = @{}
+    $references = @{}
+    $orderedTasks = [System.Collections.Generic.List[object]]::new()
+    $roadmapDependencyMap = Get-IgnoreRoadmapDependencyMap -TasksBaseDir $TasksBaseDir
+
+    if ($TodoTasks) {
+        foreach ($task in @($TodoTasks)) {
+            if (-not $task.id) {
+                continue
+            }
+
+            $tasks[$task.id] = $task
+            $null = $orderedTasks.Add($task)
+        }
+    } else {
+        foreach ($file in @(Get-ChildItem -Path $todoDir -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
+            try {
+                $task = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
+                if (-not $task.id) {
+                    continue
+                }
+
+                $tasks[$task.id] = $task
+                $null = $orderedTasks.Add($task)
+            } catch {
+                Write-Warning "[TaskIndex] Failed to read ignore state from '$($file.FullName)': $_"
+            }
+        }
+    }
+
+    $position = 0
+    foreach ($task in @($orderedTasks) | Sort-Object @{ Expression = { Get-IgnoreTaskPriorityValue -Task $_ } }, @{ Expression = { $_.name } }, @{ Expression = { $_.id } }) {
+        $position += 1
+        Add-IgnoreReferenceAlias -ReferenceMap $references -TaskId $task.id -Alias $task.id
+        Add-IgnoreReferenceAlias -ReferenceMap $references -TaskId $task.id -Alias $task.name
+        $slug = (($task.name -replace '[^a-zA-Z0-9\s-]', '' -replace '\s+', '-').ToLower())
+        if ($slug) {
+            Add-IgnoreReferenceAlias -ReferenceMap $references -TaskId $task.id -Alias $slug
+        }
+        Add-IgnoreReferenceAlias -ReferenceMap $references -TaskId $task.id -Alias $position
+        Add-IgnoreReferenceAlias -ReferenceMap $references -TaskId $task.id -Alias "task $position"
+    }
+
+    $memo = @{}
+    $resolving = @{}
+
+    function Resolve-TaskIgnoreState {
+        param(
+            [string]$TaskId
+        )
+
+        if ($memo.ContainsKey($TaskId)) {
+            return $memo[$TaskId]
+        }
+
+        if ($resolving.ContainsKey($TaskId)) {
+            return [pscustomobject]@{
+                task_id = $TaskId
+                manual = $false
+                effective = $false
+                auto = $false
+                blocking_task_ids = @()
+                blocking_task_names = @()
+                updated_at = $null
+                updated_by = $null
+            }
+        }
+
+        $resolving[$TaskId] = $true
+        $task = $tasks[$TaskId]
+        $manualIgnored = $false
+        $updatedAt = $null
+        $updatedBy = $null
+
+        if ($task.PSObject.Properties['ignore']) {
+            $manualIgnored = ($task.ignore.manual -eq $true)
+            $updatedAt = $task.ignore.updated_at
+            $updatedBy = $task.ignore.updated_by
+        }
+
+        $blockingIds = [System.Collections.Generic.List[string]]::new()
+        $dependencies = Get-ResolvedIgnoreDependencies -Task $task -RoadmapDependencyMap $roadmapDependencyMap
+        foreach ($dependency in $dependencies) {
+            if (-not $dependency) {
+                continue
+            }
+
+            $dependencyTaskIds = [System.Collections.Generic.List[string]]::new()
+            foreach ($lookupKey in (Get-IgnoreDependencyTokens -Dependency $dependency)) {
+                if (-not $references.ContainsKey($lookupKey)) {
+                    continue
+                }
+
+                $resolvedDependencyTaskId = $references[$lookupKey]
+                if (-not $tasks.ContainsKey($resolvedDependencyTaskId) -or $dependencyTaskIds.Contains($resolvedDependencyTaskId)) {
+                    continue
+                }
+
+                $dependencyTaskIds.Add($resolvedDependencyTaskId)
+            }
+
+            foreach ($dependencyTaskId in $dependencyTaskIds) {
+                $dependencyState = Resolve-TaskIgnoreState -TaskId $dependencyTaskId
+                if (-not $dependencyState.effective) {
+                    continue
+                }
+
+                if ($dependencyState.manual) {
+                    if (-not $blockingIds.Contains($dependencyTaskId)) {
+                        $blockingIds.Add($dependencyTaskId)
+                    }
+                    continue
+                }
+
+                if ($dependencyState.blocking_task_ids.Count -gt 0) {
+                    foreach ($blockingTaskId in $dependencyState.blocking_task_ids) {
+                        if (-not $blockingIds.Contains($blockingTaskId)) {
+                            $blockingIds.Add($blockingTaskId)
+                        }
+                    }
+                    continue
+                }
+
+                if (-not $blockingIds.Contains($dependencyTaskId)) {
+                    $blockingIds.Add($dependencyTaskId)
+                }
+            }
+
+        }
+        $blockingNames = foreach ($blockingTaskId in $blockingIds) {
+            if ($tasks.ContainsKey($blockingTaskId) -and $tasks[$blockingTaskId].name) {
+                $tasks[$blockingTaskId].name
+            } else {
+                $blockingTaskId
+            }
+        }
+
+        $state = [pscustomobject]@{
+            task_id = $TaskId
+            manual = $manualIgnored
+            effective = ($manualIgnored -or $blockingIds.Count -gt 0)
+            auto = (-not $manualIgnored -and $blockingIds.Count -gt 0)
+            blocking_task_ids = @($blockingIds)
+            blocking_task_names = @($blockingNames | Select-Object -Unique)
+            updated_at = $updatedAt
+            updated_by = $updatedBy
+        }
+
+        $memo[$TaskId] = $state
+        $resolving.Remove($TaskId) | Out-Null
+        return $state
+    }
+
+    $ignoreMap = @{}
+    foreach ($taskId in @($tasks.Keys)) {
+        $ignoreMap[$taskId] = Resolve-TaskIgnoreState -TaskId $taskId
+    }
+
+    return $ignoreMap
+}
+
 function Update-TaskIndex {
+    $taskMutationModulePath = (Get-Module TaskMutation | Select-Object -ExpandProperty Path -First 1)
     $baseDir = $script:TaskIndex.BaseDir
     if (-not $baseDir) {
         Write-Verbose "[TaskIndex] BaseDir not set, skipping update"
@@ -56,6 +391,7 @@ function Update-TaskIndex {
     $script:TaskIndex.DoneIds = @()
     $script:TaskIndex.DoneNames = @()
     $script:TaskIndex.DoneSlugs = @()
+    $script:TaskIndex.IgnoreMap = @{}
 
     foreach ($status in @('todo', 'analysing', 'needs-input', 'analysed', 'in-progress', 'done', 'split', 'skipped', 'cancelled')) {
         $dir = Join-Path $baseDir $status
@@ -68,7 +404,7 @@ function Update-TaskIndex {
         foreach ($file in $files) {
             try {
                 $content = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
-                $entry = @{
+                $entry = [PSCustomObject]@{
                     id = $content.id
                     name = $content.name
                     description = $content.description
@@ -88,6 +424,7 @@ function Update-TaskIndex {
                     working_dir = $content.working_dir
                     external_repo = $content.external_repo
                     research_prompt = $content.research_prompt
+                    ignore = $content.ignore
                 }
 
                 switch ($status) {
@@ -142,6 +479,22 @@ function Update-TaskIndex {
                 $seenIds[$taskId] = $true
             }
         }
+    }
+    $script:TaskIndex.IgnoreMap = Get-TaskIgnoreLookup -TasksBaseDir $baseDir -TodoTasks @($script:TaskIndex.Todo.Values)
+    foreach ($taskId in @($script:TaskIndex.Todo.Keys)) {
+        if (-not $script:TaskIndex.IgnoreMap.ContainsKey($taskId)) {
+            continue
+        }
+
+        if ($script:TaskIndex.Todo[$taskId].PSObject.Properties['ignore_state']) {
+            $script:TaskIndex.Todo[$taskId].ignore_state = $script:TaskIndex.IgnoreMap[$taskId]
+        } else {
+            $script:TaskIndex.Todo[$taskId] | Add-Member -NotePropertyName 'ignore_state' -NotePropertyValue $script:TaskIndex.IgnoreMap[$taskId] -Force
+        }
+    }
+
+    if ($taskMutationModulePath -and -not (Get-Module TaskMutation)) {
+        Import-Module $taskMutationModulePath -Global -Force | Out-Null
     }
 }
 
@@ -365,9 +718,11 @@ function Get-NextTask {
     $doneSlugs = $index.DoneSlugs
     $doneIds = $index.DoneIds
 
-    # Filter tasks with unmet dependencies
+    # Filter tasks with unmet dependencies or effective ignore state
     $eligible = @($index.Todo.Values) | Where-Object {
-        Test-AllDependenciesMet -Task $_ -DoneNames $doneNames -DoneSlugs $doneSlugs -DoneIds $doneIds
+        $ignoreState = if ($index.IgnoreMap.ContainsKey($_.id)) { $index.IgnoreMap[$_.id] } else { $null }
+        (-not $ignoreState -or -not $ignoreState.effective) -and
+        (Test-AllDependenciesMet -Task $_ -DoneNames $doneNames -DoneSlugs $doneSlugs -DoneIds $doneIds)
     }
 
     # Return highest priority (lowest number)
@@ -380,9 +735,11 @@ function Get-NextAnalysedTask {
     $doneSlugs = $index.DoneSlugs
     $doneIds = $index.DoneIds
 
-    # Filter analysed tasks with unmet dependencies
+    # Filter analysed tasks with unmet dependencies or effective ignore state
     $eligible = @($index.Analysed.Values) | Where-Object {
-        Test-AllDependenciesMet -Task $_ -DoneNames $doneNames -DoneSlugs $doneSlugs -DoneIds $doneIds
+        $ignoreState = if ($index.IgnoreMap.ContainsKey($_.id)) { $index.IgnoreMap[$_.id] } else { $null }
+        (-not $ignoreState -or -not $ignoreState.effective) -and
+        (Test-AllDependenciesMet -Task $_ -DoneNames $doneNames -DoneSlugs $doneSlugs -DoneIds $doneIds)
     }
 
     $total = @($index.Analysed.Values).Count
@@ -565,3 +922,8 @@ Export-ModuleMember -Function @(
     'Reset-TaskIndex',
     'Stop-TaskIndexWatcher'
 )
+
+
+
+
+

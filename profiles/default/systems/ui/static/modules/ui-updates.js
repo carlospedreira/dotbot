@@ -8,6 +8,9 @@
  * @param {Object} state - State object from server
  */
 function updateUI(state) {
+    if (typeof normalizeRoadmapTaskState === 'function') {
+        normalizeRoadmapTaskState(state);
+    }
     updateTimestamp(state.instance_id);
     updateTaskCounts(state.tasks);
     updateProgressPercent(state.tasks);
@@ -448,6 +451,12 @@ function updatePipelineColumn(containerId, tasks, type) {
     container.innerHTML = visibleTasks.map(task => {
         const priorityClass = task.priority == 1 ? 'priority-high' :
                               task.priority == 2 ? 'priority-med' : '';
+        const ignoreState = task.ignore_state || {};
+        const roadmapClasses = [
+            ignoreState.effective ? 'ignored' : '',
+            ignoreState.manual ? 'manual-ignored' : '',
+            ignoreState.auto ? 'blocked' : ''
+        ].filter(Boolean).join(' ');
 
         // Format duration or completed date for done items
         let completedBadge = '';
@@ -462,25 +471,33 @@ function updatePipelineColumn(containerId, tasks, type) {
 
         // Show phase sub-label for tasks in the "Working" column
         const phaseLabel = task._phase ? `<span class="task-tag phase-tag">${escapeHtml(task._phase)}</span>` : '';
+        const roadmapStateTags = typeof buildRoadmapTaskStatusTags === 'function'
+            ? buildRoadmapTaskStatusTags(task, type)
+            : '';
+        const roadmapIgnoreHint = typeof buildRoadmapTaskIgnoreHint === 'function'
+            ? buildRoadmapTaskIgnoreHint(task, type)
+            : '';
+        const roadmapActions = typeof buildRoadmapTaskActionsMarkup === 'function'
+            ? buildRoadmapTaskActionsMarkup(task, type)
+            : '';
 
         return `
-            <div class="pipeline-task ${type === 'active' ? 'active' : ''} ${priorityClass}" data-task-id="${escapeHtml(task.id || '')}">
+            <div class="pipeline-task ${type === 'active' ? 'active' : ''} ${priorityClass} ${roadmapClasses}" data-task-id="${escapeHtml(task.id || '')}">
                 <div class="task-id">${escapeHtml(task.id || '')}</div>
                 <div class="task-title">${escapeHtml(task.name || task.id || 'Unknown')}</div>
                 <div class="task-tags">
                     ${task.category ? `<span class="task-tag">${escapeHtml(task.category)}</span>` : ''}
                     ${phaseLabel}
                     ${type === 'active' && !task._phase ? '<span class="task-tag">↻ agent</span>' : ''}
+                    ${roadmapStateTags}
                 </div>
+                ${roadmapIgnoreHint}
+                ${roadmapActions}
                 ${completedBadge}
             </div>
         `;
     }).join('');
 }
-
-/**
- * Initialize pipeline infinite scroll
- */
 function initPipelineInfiniteScroll() {
     const columnIds = [
         'pipeline-todo', 'pipeline-working', 'pipeline-needs-input', 'pipeline-done',
@@ -661,6 +678,7 @@ async function initProjectName() {
             executiveSummary = info.executive_summary || null;
             hasExistingCode = info.has_existing_code || false;
             const profileName = info.profile || null;
+            currentProfileName = profileName;
             updateProfilePill(profileName);
         }
     } catch (error) {
@@ -668,6 +686,7 @@ async function initProjectName() {
         projectName = 'unknown';
         projectRoot = 'unknown';
         executiveSummary = null;
+        currentProfileName = null;
     }
     updateProjectBadge();
     updateFooterMission();
@@ -689,6 +708,7 @@ function updateProjectBadge() {
  * @param {string|null} profile - Active profile name, or null to hide
  */
 function updateProfilePill(profile) {
+    currentProfileName = profile || null;
     const pill = document.getElementById('profile-pill');
     if (!pill) return;
     if (profile) {
@@ -820,3 +840,4 @@ function updateSteeringPanel(instances) {
     if (priority) priority.disabled = !canSend;
     if (sendBtn) sendBtn.disabled = !canSend;
 }
+

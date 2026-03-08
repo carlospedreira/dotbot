@@ -174,6 +174,11 @@ if (-not $dotbotInstalled) {
             Assert-PathExists -Name "Task dir: $dir" -Path (Join-Path $botDir "workspace\tasks\$dir")
         }
 
+
+        $todoArchiveDirs = @('edited_tasks', 'deleted_tasks')
+        foreach ($dir in $todoArchiveDirs) {
+            Assert-PathExists -Name "Todo archive dir: $dir" -Path (Join-Path $botDir "workspace\tasks\todo\$dir")
+        }
         # System directories
         Assert-PathExists -Name "systems/mcp exists" -Path (Join-Path $botDir "systems\mcp")
         Assert-PathExists -Name "systems/ui exists" -Path (Join-Path $botDir "systems\ui")
