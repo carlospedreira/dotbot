@@ -304,6 +304,73 @@ try {
     $roadmapActionsScript = Join-Path $botDir "systems\ui\static\modules\roadmap-task-actions.js"
     $expectedAuditUsername = Get-ExpectedAuditUsername
 
+    $taskCreateMeta = Get-TaskCreationMetadata
+    Assert-True -Name "TaskAPI task creation metadata returns success" `
+        -Condition ($taskCreateMeta.success -eq $true) `
+        -Message "Expected task creation metadata success=true"
+    Assert-Equal -Name "TaskAPI task creation metadata defaults to direct mode" `
+        -Expected "direct" `
+        -Actual $taskCreateMeta.default_mode
+    Assert-True -Name "TaskAPI task creation metadata includes settings-backed categories" `
+        -Condition (@($taskCreateMeta.categories) -contains 'feature' -and @($taskCreateMeta.categories) -contains 'ui-ux') `
+        -Message "Expected metadata categories to include default task categories"
+    Assert-Equal -Name "TaskAPI task creation metadata exposes fixed efforts" `
+        -Expected "XS,S,M,L,XL" `
+        -Actual (@($taskCreateMeta.efforts) -join ',')
+
+    $directCreateResult = Start-DirectTaskCreation `
+        -Name "Direct creation task" `
+        -Description "Create a task immediately without Sonnet assistance." `
+        -Category "enhancement" `
+        -Effort "S" `
+        -NeedsInterview $true
+    Assert-True -Name "TaskAPI Start-DirectTaskCreation returns success" `
+        -Condition ($directCreateResult.success -eq $true) `
+        -Message "Expected direct task creation result success=true"
+    Assert-True -Name "TaskAPI Start-DirectTaskCreation writes a task file immediately" `
+        -Condition (Test-Path $directCreateResult.file_path) `
+        -Message "Expected direct task creation to write a todo task file"
+
+    $directTask = Get-Content $directCreateResult.file_path -Raw | ConvertFrom-Json
+    Assert-Equal -Name "Direct task stores provided name" `
+        -Expected "Direct creation task" `
+        -Actual $directTask.name
+    Assert-Equal -Name "Direct task stores provided description" `
+        -Expected "Create a task immediately without Sonnet assistance." `
+        -Actual $directTask.description
+    Assert-Equal -Name "Direct task stores provided category" `
+        -Expected "enhancement" `
+        -Actual $directTask.category
+    Assert-Equal -Name "Direct task stores provided effort" `
+        -Expected "S" `
+        -Actual $directTask.effort
+    Assert-True -Name "Direct task stores needs_interview flag" `
+        -Condition ($directTask.needs_interview -eq $true) `
+        -Message "Expected direct task to preserve needs_interview=true"
+    Assert-Equal -Name "Direct task stores creation_mode metadata" `
+        -Expected "direct" `
+        -Actual $directTask.creation_mode
+
+    $missingNameRejected = $false
+    try {
+        Start-DirectTaskCreation -Name "" -Description "Description only" -Category "feature" -Effort "M" | Out-Null
+    } catch {
+        $missingNameRejected = $_.Exception.Message -match 'Task name is required'
+    }
+    Assert-True -Name "TaskAPI Start-DirectTaskCreation rejects missing name" `
+        -Condition $missingNameRejected `
+        -Message "Expected direct task creation to reject missing names"
+
+    $missingDescriptionRejected = $false
+    try {
+        Start-DirectTaskCreation -Name "Missing description task" -Description "" -Category "feature" -Effort "M" | Out-Null
+    } catch {
+        $missingDescriptionRejected = $_.Exception.Message -match 'Task description is required'
+    }
+    Assert-True -Name "TaskAPI Start-DirectTaskCreation rejects missing description" `
+        -Condition $missingDescriptionRejected `
+        -Message "Expected direct task creation to reject missing descriptions"
+
     $structuredEditResult = Update-RoadmapTask -TaskId "task-object" -Actor "dotbot-test" -Updates @{
         description = "Structured task updated"
     }
@@ -506,7 +573,6 @@ $allPassed = Write-TestSummary -LayerName "Task Action Source Tests"
 if (-not $allPassed) {
     exit 1
 }
-
 
 
 

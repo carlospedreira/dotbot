@@ -1252,14 +1252,46 @@
             </div>
             <div class="modal-body">
                 <div class="task-create-form">
-                    <div class="form-group">
-                        <label class="form-label">Describe what you want to accomplish</label>
-                        <textarea class="form-textarea" id="task-create-prompt" placeholder="Example: Add a dark mode toggle to the settings page with persistent user preference..." rows="6"></textarea>
+                    <div class="task-create-mode-switch" id="task-create-mode-switch" role="tablist" aria-label="Task creation mode">
+                        <button type="button" class="task-create-mode-btn active" id="task-create-mode-direct" data-task-create-mode="direct" aria-selected="true">Direct</button>
+                        <button type="button" class="task-create-mode-btn" id="task-create-mode-sonnet" data-task-create-mode="sonnet" aria-selected="false">Sonnet</button>
                     </div>
-                    <div class="form-hint">
-                        Dotbot will analyze your request and create a properly structured task with acceptance criteria, implementation steps, and sensible defaults.
+
+                    <div class="task-create-mode-panel" id="task-create-panel-direct">
+                        <div class="form-hint">
+                            Direct mode writes the task immediately with the fields you provide. It skips model assistance so creation is fast and predictable.
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="task-create-name">Task name</label>
+                            <input class="form-input task-create-input" id="task-create-name" type="text" placeholder="Add dark mode toggle to settings page">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="task-create-description">Description</label>
+                            <textarea class="form-textarea" id="task-create-description" placeholder="Describe what should change, where it should happen, and any important constraints..." rows="5"></textarea>
+                        </div>
+                        <div class="task-create-grid">
+                            <div class="form-group">
+                                <label class="form-label" for="task-create-category">Category</label>
+                                <select class="form-select" id="task-create-category"></select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="task-create-effort">Effort</label>
+                                <select class="form-select" id="task-create-effort"></select>
+                            </div>
+                        </div>
                     </div>
-                    <div class="form-option">
+
+                    <div class="task-create-mode-panel hidden" id="task-create-panel-sonnet">
+                        <div class="form-group">
+                            <label class="form-label" for="task-create-prompt">Describe what you want to accomplish</label>
+                            <textarea class="form-textarea" id="task-create-prompt" placeholder="Example: Add a dark mode toggle to the settings page with persistent user preference..." rows="6"></textarea>
+                        </div>
+                        <div class="form-hint">
+                            Sonnet will analyze your request and create a structured task with inferred details and sensible defaults.
+                        </div>
+                    </div>
+
+                    <div class="form-option task-create-shared-option">
                         <label class="form-checkbox-label">
                             <input type="checkbox" id="task-create-interview">
                             <span class="form-checkbox-text">Interview me to clarify requirements</span>
@@ -1421,4 +1453,3 @@
     <script src="app.js"></script>
 </body>
 </html>
-

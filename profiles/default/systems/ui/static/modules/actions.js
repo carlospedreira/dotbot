@@ -6,6 +6,97 @@
 // State for action items
 let actionItems = [];
 let selectedAnswers = {};  // { taskId: [selectedKeys] }
+let taskCreateMode = 'direct';
+let taskCreateMeta = null;
+let taskCreateMetaPromise = null;
+let taskCreateModeTouched = false;
+
+function getDefaultTaskCreateMeta() {
+    return {
+        success: true,
+        default_mode: 'direct',
+        categories: ['core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux'],
+        efforts: ['XS', 'S', 'M', 'L', 'XL']
+    };
+}
+
+function populateTaskCreateSelect(selectEl, values, selectedValue) {
+    if (!selectEl) return;
+
+    selectEl.innerHTML = '';
+    values.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        if (value === selectedValue) {
+            option.selected = true;
+        }
+        selectEl.appendChild(option);
+    });
+}
+
+function applyTaskCreateMetadata(meta) {
+    const categorySelect = document.getElementById('task-create-category');
+    const effortSelect = document.getElementById('task-create-effort');
+    const safeMeta = meta || getDefaultTaskCreateMeta();
+
+    populateTaskCreateSelect(categorySelect, safeMeta.categories || getDefaultTaskCreateMeta().categories, 'feature');
+    populateTaskCreateSelect(effortSelect, safeMeta.efforts || getDefaultTaskCreateMeta().efforts, 'M');
+}
+
+async function loadTaskCreateMetadata(forceRefresh = false) {
+    if (taskCreateMeta && !forceRefresh) {
+        return taskCreateMeta;
+    }
+
+    if (taskCreateMetaPromise && !forceRefresh) {
+        return taskCreateMetaPromise;
+    }
+
+    taskCreateMetaPromise = fetch(`${API_BASE}/api/task/create/meta`)
+        .then(async (response) => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+        })
+        .then((meta) => {
+            taskCreateMeta = {
+                ...getDefaultTaskCreateMeta(),
+                ...(meta || {})
+            };
+            applyTaskCreateMetadata(taskCreateMeta);
+            return taskCreateMeta;
+        })
+        .catch((error) => {
+            console.warn('Falling back to default task creation metadata:', error);
+            taskCreateMeta = getDefaultTaskCreateMeta();
+            applyTaskCreateMetadata(taskCreateMeta);
+            return taskCreateMeta;
+        })
+        .finally(() => {
+            taskCreateMetaPromise = null;
+        });
+
+    return taskCreateMetaPromise;
+}
+
+function setTaskCreateMode(mode, options = {}) {
+    const nextMode = mode === 'sonnet' ? 'sonnet' : 'direct';
+    if (options.userInitiated) {
+        taskCreateModeTouched = true;
+    }
+    taskCreateMode = nextMode;
+
+    document.querySelectorAll('[data-task-create-mode]').forEach((button) => {
+        const isActive = button.dataset.taskCreateMode === nextMode;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+
+    document.getElementById('task-create-panel-direct')?.classList.toggle('hidden', nextMode !== 'direct');
+    document.getElementById('task-create-panel-sonnet')?.classList.toggle('hidden', nextMode !== 'sonnet');
+}
 
 /**
  * Initialize action-required functionality
@@ -47,6 +138,7 @@ function initTaskCreateModal() {
     const cancelBtn = document.getElementById('task-create-cancel');
     const submitBtn = document.getElementById('task-create-submit');
     const textarea = document.getElementById('task-create-prompt');
+    const descriptionTextarea = document.getElementById('task-create-description');
 
     // Add task button handlers (both overview and pipeline)
     document.getElementById('add-task-btn-upcoming')?.addEventListener('click', openTaskCreateModal);
@@ -63,6 +155,9 @@ function initTaskCreateModal() {
 
     // Submit handler
     submitBtn?.addEventListener('click', submitTaskCreate);
+    document.querySelectorAll('[data-task-create-mode]').forEach((button) => {
+        button.addEventListener('click', () => setTaskCreateMode(button.dataset.taskCreateMode, { userInitiated: true }));
+    });
 
     // Ctrl+Enter to submit
     textarea?.addEventListener('keydown', (e) => {
@@ -71,19 +166,42 @@ function initTaskCreateModal() {
             submitTaskCreate();
         }
     });
+    descriptionTextarea?.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            submitTaskCreate();
+        }
+    });
+
+    loadTaskCreateMetadata();
 }
 
 /**
  * Open task creation modal
  */
-function openTaskCreateModal() {
+async function openTaskCreateModal() {
     const modal = document.getElementById('task-create-modal');
-    const textarea = document.getElementById('task-create-prompt');
+    const promptTextarea = document.getElementById('task-create-prompt');
+    const nameInput = document.getElementById('task-create-name');
 
     if (modal) {
         modal.classList.add('visible');
-        // Focus the textarea after a brief delay for the modal animation
-        setTimeout(() => textarea?.focus(), 100);
+        taskCreateModeTouched = false;
+        const meta = await loadTaskCreateMetadata();
+        if (!modal.classList.contains('visible')) {
+            return;
+        }
+        if (!taskCreateModeTouched) {
+            setTaskCreateMode(meta.default_mode || 'direct');
+        }
+        // Focus the active primary input after a brief delay for the modal animation
+        setTimeout(() => {
+            if (taskCreateMode === 'direct') {
+                nameInput?.focus();
+            } else {
+                promptTextarea?.focus();
+            }
+        }, 100);
     }
 }
 
@@ -92,15 +210,25 @@ function openTaskCreateModal() {
  */
 function closeTaskCreateModal() {
     const modal = document.getElementById('task-create-modal');
-    const textarea = document.getElementById('task-create-prompt');
+    const promptTextarea = document.getElementById('task-create-prompt');
+    const nameInput = document.getElementById('task-create-name');
+    const descriptionTextarea = document.getElementById('task-create-description');
+    const categorySelect = document.getElementById('task-create-category');
+    const effortSelect = document.getElementById('task-create-effort');
     const submitBtn = document.getElementById('task-create-submit');
     const interviewCheckbox = document.getElementById('task-create-interview');
 
     if (modal) {
         modal.classList.remove('visible');
         // Clear the form
-        if (textarea) textarea.value = '';
+        if (promptTextarea) promptTextarea.value = '';
+        if (nameInput) nameInput.value = '';
+        if (descriptionTextarea) descriptionTextarea.value = '';
         if (interviewCheckbox) interviewCheckbox.checked = false;
+        if (categorySelect) categorySelect.value = 'feature';
+        if (effortSelect) effortSelect.value = 'M';
+        taskCreateModeTouched = false;
+        setTaskCreateMode((taskCreateMeta?.default_mode) || 'direct');
         // Reset button state
         if (submitBtn) {
             submitBtn.classList.remove('loading');
@@ -113,14 +241,30 @@ function closeTaskCreateModal() {
  * Submit task creation request
  */
 async function submitTaskCreate() {
-    const textarea = document.getElementById('task-create-prompt');
+    const promptTextarea = document.getElementById('task-create-prompt');
+    const nameInput = document.getElementById('task-create-name');
+    const descriptionTextarea = document.getElementById('task-create-description');
+    const categorySelect = document.getElementById('task-create-category');
+    const effortSelect = document.getElementById('task-create-effort');
     const submitBtn = document.getElementById('task-create-submit');
     const interviewCheckbox = document.getElementById('task-create-interview');
 
-    const prompt = textarea?.value?.trim();
+    const prompt = promptTextarea?.value?.trim();
+    const name = nameInput?.value?.trim();
+    const description = descriptionTextarea?.value?.trim();
     const needsInterview = interviewCheckbox?.checked || false;
 
-    if (!prompt) {
+    if (taskCreateMode === 'direct') {
+        if (!name) {
+            showToast('Please enter a task name', 'warning');
+            return;
+        }
+
+        if (!description) {
+            showToast('Please enter a task description', 'warning');
+            return;
+        }
+    } else if (!prompt) {
         showToast('Please describe the task you want to create', 'warning');
         return;
     }
@@ -132,24 +276,47 @@ async function submitTaskCreate() {
     }
 
     try {
+        const body = taskCreateMode === 'direct'
+            ? {
+                mode: 'direct',
+                name,
+                description,
+                category: categorySelect?.value || 'feature',
+                effort: effortSelect?.value || 'M',
+                needs_interview: needsInterview
+            }
+            : {
+                mode: 'sonnet',
+                prompt,
+                needs_interview: needsInterview
+            };
+
         const response = await fetch(`${API_BASE}/api/task/create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, needs_interview: needsInterview })
+            body: JSON.stringify(body)
         });
 
         const result = await response.json();
 
         if (result.success) {
+            const submittedMode = taskCreateMode;
             closeTaskCreateModal();
-            // Show success feedback
-            showSignalFeedback('Task creation started. Claude is processing your request...', 'success');
-            // Trigger state refresh after a delay to pick up the new task
-            setTimeout(() => {
-                if (typeof pollState === 'function') {
-                    pollState();
-                }
-            }, 2000);
+            if (submittedMode === 'direct') {
+                showSignalFeedback('Task created directly. Refreshing the roadmap...', 'success');
+                setTimeout(() => {
+                    if (typeof pollState === 'function') {
+                        pollState();
+                    }
+                }, 250);
+            } else {
+                showSignalFeedback('Task creation started. Sonnet is processing your request...', 'success');
+                setTimeout(() => {
+                    if (typeof pollState === 'function') {
+                        pollState();
+                    }
+                }, 2000);
+            }
         } else {
             showToast('Failed to create task: ' + (result.error || 'Unknown error'), 'error');
             // Reset button state on error

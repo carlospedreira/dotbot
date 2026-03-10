@@ -1139,6 +1139,21 @@ try {
                     $content = Get-RoadmapTaskHistory -TaskId $taskId | ConvertTo-Json -Depth 20 -Compress
                     break
                 }
+                "/api/task/create/meta" {
+                    if ($method -eq "GET") {
+                        $contentType = "application/json; charset=utf-8"
+                        try {
+                            $content = Get-TaskCreationMetadata | ConvertTo-Json -Depth 5 -Compress
+                        } catch {
+                            $statusCode = 500
+                            $content = @{ success = $false; error = "Failed to load task creation metadata: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                        }
+                    } else {
+                        $statusCode = 405
+                        $content = @{ success = $false; error = "Method not allowed" } | ConvertTo-Json -Compress
+                    }
+                    break
+                }
                 "/api/task/create" {
                     if ($method -eq "POST") {
                         $contentType = "application/json; charset=utf-8"
@@ -1147,15 +1162,44 @@ try {
                             $body = $reader.ReadToEnd() | ConvertFrom-Json
                             $reader.Close()
 
-                            if (-not $body.prompt) {
-                                $statusCode = 400
-                                $content = @{ success = $false; error = "Missing required 'prompt' field" } | ConvertTo-Json -Compress
+                            $mode = if ($body.mode) { [string]$body.mode } else { "sonnet" }
+
+                            if ($mode -eq "direct") {
+                                if (-not $body.name) {
+                                    $statusCode = 400
+                                    $content = @{ success = $false; error = "Missing required 'name' field" } | ConvertTo-Json -Compress
+                                } elseif (-not $body.description) {
+                                    $statusCode = 400
+                                    $content = @{ success = $false; error = "Missing required 'description' field" } | ConvertTo-Json -Compress
+                                } else {
+                                    $content = Start-DirectTaskCreation `
+                                        -Name $body.name `
+                                        -Description $body.description `
+                                        -Category $body.category `
+                                        -Effort $body.effort `
+                                        -NeedsInterview ($body.needs_interview -eq $true) |
+                                        ConvertTo-Json -Compress
+                                }
+                            } elseif ($mode -eq "sonnet") {
+                                if (-not $body.prompt) {
+                                    $statusCode = 400
+                                    $content = @{ success = $false; error = "Missing required 'prompt' field" } | ConvertTo-Json -Compress
+                                } else {
+                                    $content = Start-TaskCreation -UserPrompt $body.prompt -NeedsInterview ($body.needs_interview -eq $true) | ConvertTo-Json -Compress
+                                }
                             } else {
-                                $content = Start-TaskCreation -UserPrompt $body.prompt -NeedsInterview ($body.needs_interview -eq $true) | ConvertTo-Json -Compress
+                                $statusCode = 400
+                                $content = @{ success = $false; error = "Invalid mode '$mode'" } | ConvertTo-Json -Compress
                             }
                         } catch {
-                            $statusCode = 500
-                            $content = @{ success = $false; error = "Failed to create task: $($_.Exception.Message)" } | ConvertTo-Json -Compress
+                            $errorMessage = $_.Exception.Message
+                            if ($mode -eq "direct" -and $errorMessage -match '^(Task name is required|Task description is required|Invalid category\.|Invalid effort\.)') {
+                                $statusCode = 400
+                                $content = @{ success = $false; error = $errorMessage } | ConvertTo-Json -Compress
+                            } else {
+                                $statusCode = 500
+                                $content = @{ success = $false; error = "Failed to create task: $errorMessage" } | ConvertTo-Json -Compress
+                            }
                         }
                     } else {
                         $statusCode = 405
@@ -1482,4 +1526,3 @@ try {
     }
     Write-Status "Server stopped" -Type Warn
 }
-

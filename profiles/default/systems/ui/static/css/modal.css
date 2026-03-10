@@ -560,6 +560,54 @@
     gap: 16px;
 }
 
+.task-create-mode-switch {
+    display: inline-flex;
+    align-self: flex-start;
+    padding: 4px;
+    background: var(--bezel-dark);
+    border: 1px solid var(--bezel-edge);
+    border-radius: 999px;
+    gap: 4px;
+}
+
+.task-create-mode-btn {
+    border: 0;
+    background: transparent;
+    color: var(--label-color);
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 8px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.task-create-mode-btn:hover {
+    color: var(--color-primary);
+    background: var(--primary-05);
+}
+
+.task-create-mode-btn.active {
+    color: var(--bg-panel);
+    background: var(--color-primary);
+    box-shadow: 0 0 0 1px var(--primary-30);
+}
+
+.task-create-mode-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.task-create-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
 .form-group {
     display: flex;
     flex-direction: column;
@@ -597,6 +645,33 @@
 .form-textarea::placeholder {
     color: var(--label-color);
     opacity: 0.6;
+}
+
+.task-create-input,
+.form-select {
+    width: 100%;
+    padding: 12px;
+    background: var(--bezel-dark);
+    border: 1px solid var(--bezel-edge);
+    border-radius: 4px;
+    color: var(--color-primary);
+}
+
+.form-select {
+    font-family: var(--font-ui);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.form-select:focus {
+    outline: none;
+    border-color: var(--color-primary-dim);
+    box-shadow: 0 0 0 2px var(--primary-10);
+}
+
+.form-select option {
+    background: var(--bg-panel);
+    color: var(--color-primary);
 }
 
 .form-hint {
@@ -685,6 +760,10 @@
     gap: 10px;
 }
 
+.task-create-shared-option {
+    margin-top: 0;
+}
+
 /* Add Task Button (in module headers) */
 .add-task-btn {
     padding: 4px 10px;
@@ -724,6 +803,12 @@
 #task-create-submit:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+    .task-create-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* ========== TASK DETAIL MODAL (SIDEBAR LAYOUT) ========== */

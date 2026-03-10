@@ -23,6 +23,7 @@ function Initialize-TaskAPI {
 
     # Save MCP tool script paths for on-demand dot-sourcing at call sites
     # (dot-sourcing inside a function scopes the definitions to that function only)
+    $script:TaskCreateScript = "$BotRoot\systems\mcp\tools\task-create\script.ps1"
     $script:TaskAnswerQuestionScript = "$BotRoot\systems\mcp\tools\task-answer-question\script.ps1"
     $script:TaskApproveSplitScript = "$BotRoot\systems\mcp\tools\task-approve-split\script.ps1"
     $script:TaskMutationModulePath = "$BotRoot\systems\mcp\modules\TaskMutation.psm1"
@@ -145,6 +146,35 @@ function ConvertTo-TaskApiValue {
     }
 
     return $Value
+}
+
+function Get-TaskCreationCategories {
+    $defaultCategories = @('core', 'feature', 'enhancement', 'bugfix', 'infrastructure', 'ui-ux')
+    $settingsPath = Join-Path $script:Config.BotRoot "defaults\settings.default.json"
+
+    if (-not (Test-Path $settingsPath)) {
+        return $defaultCategories
+    }
+
+    try {
+        $settings = Get-Content -Path $settingsPath -Raw | ConvertFrom-Json
+        if ($settings.task_categories) {
+            return @(@($settings.task_categories) + $defaultCategories | Select-Object -Unique)
+        }
+    } catch {
+        # Fall back to built-in categories when settings cannot be parsed.
+    }
+
+    return $defaultCategories
+}
+
+function Get-TaskCreationMetadata {
+    return @{
+        success = $true
+        default_mode = "direct"
+        categories = @(Get-TaskCreationCategories)
+        efforts = @('XS', 'S', 'M', 'L', 'XL')
+    }
 }
 
 function Get-TodoTaskRecord {
@@ -441,11 +471,12 @@ Task creation guidelines:
 - acceptance_criteria: Leave empty or minimal (analyse loop will define)
 - steps: Leave empty (analyse loop will define)
 - needs_interview: Set to $NeedsInterview (user wants to be interviewed for clarification)
+- creation_mode: Always set to "sonnet"
 
 User's request to capture:
 $UserPrompt
 
-Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsInterview. Do not ask questions or provide commentary.
+Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsInterview and creation_mode="sonnet". Do not ask questions or provide commentary.
 "@
 
     # Launch via process manager
@@ -455,12 +486,55 @@ Now create the task using mcp__dotbot__task_create with needs_interview=$NeedsIn
     if ($escapedPrompt.Length -gt 8000) { $escapedPrompt = $escapedPrompt.Substring(0, 8000) }
     $launchArgs = @("-File", "`"$launcherPath`"", "-Type", "task-creation", "-Model", "Sonnet", "-Description", "`"Create task from user request`"", "-Prompt", "`"$escapedPrompt`"")
     Start-Process pwsh -ArgumentList $launchArgs -WindowStyle Normal | Out-Null
-    Write-Status "Task creation launched as tracked process" -Type Info
+    if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
+        Write-Status "Task creation launched as tracked process" -Type Info
+    }
 
     return @{
         success = $true
         message = "Task creation started via process manager."
     }
+}
+
+function Start-DirectTaskCreation {
+    param(
+        [Parameter(Mandatory)] [AllowEmptyString()] [string]$Name,
+        [Parameter(Mandatory)] [AllowEmptyString()] [string]$Description,
+        [string]$Category,
+        [string]$Effort,
+        [bool]$NeedsInterview = $false
+    )
+
+    if (-not $Name -or -not $Name.Trim()) {
+        throw "Task name is required"
+    }
+
+    if (-not $Description -or -not $Description.Trim()) {
+        throw "Task description is required"
+    }
+
+    . $script:TaskCreateScript
+
+    $arguments = @{
+        name = $Name.Trim()
+        description = $Description.Trim()
+        needs_interview = $NeedsInterview
+        creation_mode = "direct"
+    }
+
+    if ($Category) {
+        $arguments.category = $Category
+    }
+
+    if ($Effort) {
+        $arguments.effort = $Effort
+    }
+
+    $result = Invoke-TaskCreate -Arguments $arguments
+    if (Get-Command Write-Status -ErrorAction SilentlyContinue) {
+        Write-Status "Task created directly: $Name" -Type Success
+    }
+    return $result
 }
 
 function Set-RoadmapTaskIgnore {
@@ -557,9 +631,11 @@ Export-ModuleMember -Function @(
     'Initialize-TaskAPI',
     'Get-TaskPlan',
     'Get-ActionRequired',
+    'Get-TaskCreationMetadata',
     'Submit-TaskAnswer',
     'Submit-SplitApproval',
     'Start-TaskCreation',
+    'Start-DirectTaskCreation',
     'Set-RoadmapTaskIgnore',
     'Update-RoadmapTask',
     'Delete-RoadmapTask',
