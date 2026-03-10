@@ -142,14 +142,10 @@ async function submitTaskCreate() {
 
         if (result.success) {
             closeTaskCreateModal();
-            // Show success feedback
-            showSignalFeedback('Task creation started. Claude is processing your request...', 'success');
-            // Trigger state refresh after a delay to pick up the new task
-            setTimeout(() => {
-                if (typeof pollState === 'function') {
-                    pollState();
-                }
-            }, 2000);
+            showSignalFeedback(result.message || 'Task created and added to the task list.', 'success');
+            if (typeof pollState === 'function') {
+                await pollState();
+            }
         } else {
             showToast('Failed to create task: ' + (result.error || 'Unknown error'), 'error');
             // Reset button state on error

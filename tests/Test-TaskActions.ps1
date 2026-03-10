@@ -302,7 +302,155 @@ try {
     Import-Module $taskApiModule -Force
     Initialize-TaskAPI -BotRoot $botDir -ProjectRoot $testProject
     $roadmapActionsScript = Join-Path $botDir "systems\ui\static\modules\roadmap-task-actions.js"
+    $actionsScriptPath = Join-Path $botDir "systems\ui\static\modules\actions.js"
     $expectedAuditUsername = Get-ExpectedAuditUsername
+
+    $processFilesBeforeCreate = @(Get-ChildItem -Path (Join-Path $botDir ".control\processes") -Filter "*.json" -File -ErrorAction SilentlyContinue)
+    $createFromUiResult = Start-TaskCreation -UserPrompt "fix mobile dashboard button not working" -NeedsInterview $true
+    Assert-True -Name "TaskAPI Start-TaskCreation creates a task immediately" `
+        -Condition ($createFromUiResult.success -eq $true -and -not [string]::IsNullOrWhiteSpace($createFromUiResult.task_id)) `
+        -Message "Expected direct task creation to return success and a task_id"
+
+    $createdUiTaskFile = Get-ChildItem -Path $todoDir -Filter "*.json" -File | Where-Object {
+        try {
+            (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $createFromUiResult.task_id
+        } catch {
+            $false
+        }
+    } | Select-Object -First 1
+    Assert-True -Name "TaskAPI Start-TaskCreation writes the task into todo immediately" `
+        -Condition ($null -ne $createdUiTaskFile) `
+        -Message "Expected to find a todo file for the newly created task"
+
+    if ($createdUiTaskFile) {
+        $createdUiTask = Get-Content $createdUiTaskFile.FullName -Raw | ConvertFrom-Json
+        Assert-Equal -Name "Direct task creation preserves normalized description text" `
+            -Expected "fix mobile dashboard button not working" `
+            -Actual $createdUiTask.description
+        Assert-Equal -Name "Direct task creation infers bugfix category without Sonnet" `
+            -Expected "bugfix" `
+            -Actual $createdUiTask.category
+        Assert-True -Name "Direct task creation preserves needs_interview flag" `
+            -Condition ($createdUiTask.needs_interview -eq $true) `
+            -Message "Expected created task to keep needs_interview=true"
+    }
+
+    $digitPrefixCases = @(
+        @{ Prompt = "2FA login fails on mobile"; ExpectedName = "2FA login fails on mobile" },
+        @{ Prompt = "3rd-party auth cleanup"; ExpectedName = "3rd-party auth cleanup" },
+        @{ Prompt = ".NET 8 upgrade"; ExpectedName = ".NET 8 upgrade" },
+        @{ Prompt = "1. Fix task title parsing"; ExpectedName = "Fix task title parsing" },
+        @{ Prompt = "- [ ] Add retry logic"; ExpectedName = "Add retry logic" }
+    )
+    foreach ($case in $digitPrefixCases) {
+        $caseResult = Start-TaskCreation -UserPrompt $case.Prompt
+        $caseTaskFile = Get-ChildItem -Path $todoDir -Filter "*.json" -File | Where-Object {
+            try {
+                (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $caseResult.task_id
+            } catch {
+                $false
+            }
+        } | Select-Object -First 1
+
+        Assert-True -Name "Direct task creation stores task file for '$($case.Prompt)'" `
+            -Condition ($null -ne $caseTaskFile) `
+            -Message "Expected created task file for prompt '$($case.Prompt)'"
+
+        if ($caseTaskFile) {
+            $caseTask = Get-Content $caseTaskFile.FullName -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Direct task creation preserves task title for '$($case.Prompt)'" `
+                -Expected $case.ExpectedName `
+                -Actual $caseTask.name
+        }
+    }
+
+    $abbreviationCases = @(
+        @{ Prompt = "Update U.S. tax rules in pricing service"; ExpectedName = "Update U.S. tax rules in pricing service" },
+        @{ Prompt = "Fix login for Mr. Smith accounts"; ExpectedName = "Fix login for Mr. Smith accounts" }
+    )
+    foreach ($case in $abbreviationCases) {
+        $caseResult = Start-TaskCreation -UserPrompt $case.Prompt
+        $caseTaskFile = Get-ChildItem -Path $todoDir -Filter "*.json" -File | Where-Object {
+            try {
+                (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $caseResult.task_id
+            } catch {
+                $false
+            }
+        } | Select-Object -First 1
+
+        Assert-True -Name "Direct task creation stores task file for abbreviation prompt '$($case.Prompt)'" `
+            -Condition ($null -ne $caseTaskFile) `
+            -Message "Expected created task file for prompt '$($case.Prompt)'"
+
+        if ($caseTaskFile) {
+            $caseTask = Get-Content $caseTaskFile.FullName -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Direct task creation preserves abbreviation title for '$($case.Prompt)'" `
+                -Expected $case.ExpectedName `
+                -Actual $caseTask.name
+        }
+    }
+
+    $formattedPrompt = @"
+Investigate login failure with this payload:
+
+    POST /api/auth/login
+    {
+      ""code"": ""2FA_REQUIRED""
+    }
+
+- Repro on mobile
+- Capture stack trace
+"@
+    $formattedResult = Start-TaskCreation -UserPrompt $formattedPrompt
+    $formattedTaskFile = Get-ChildItem -Path $todoDir -Filter "*.json" -File | Where-Object {
+        try {
+            (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $formattedResult.task_id
+        } catch {
+            $false
+        }
+    } | Select-Object -First 1
+    Assert-True -Name "Direct task creation stores task file for formatted prompt" `
+        -Condition ($null -ne $formattedTaskFile) `
+        -Message "Expected created task file for formatted prompt"
+    if ($formattedTaskFile) {
+        $formattedTask = Get-Content $formattedTaskFile.FullName -Raw | ConvertFrom-Json
+        Assert-Equal -Name "Direct task creation preserves formatted prompt description verbatim" `
+            -Expected ($formattedPrompt -replace '\r\n?', "`n") `
+            -Actual $formattedTask.description
+    }
+
+    $categoryCases = @(
+        @{ Prompt = "Build export page for reports"; ExpectedCategory = "feature" },
+        @{ Prompt = "Add support for SSO login"; ExpectedCategory = "feature" },
+        @{ Prompt = "Set up CI pipeline for pull requests"; ExpectedCategory = "infrastructure" },
+        @{ Prompt = "Refactor auth token cleanup flow"; ExpectedCategory = "enhancement" }
+    )
+    foreach ($case in $categoryCases) {
+        $caseResult = Start-TaskCreation -UserPrompt $case.Prompt
+        $caseTaskFile = Get-ChildItem -Path $todoDir -Filter "*.json" -File | Where-Object {
+            try {
+                (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $caseResult.task_id
+            } catch {
+                $false
+            }
+        } | Select-Object -First 1
+
+        Assert-True -Name "Direct task creation stores task file for category prompt '$($case.Prompt)'" `
+            -Condition ($null -ne $caseTaskFile) `
+            -Message "Expected created task file for prompt '$($case.Prompt)'"
+
+        if ($caseTaskFile) {
+            $caseTask = Get-Content $caseTaskFile.FullName -Raw | ConvertFrom-Json
+            Assert-Equal -Name "Direct task creation infers category '$($case.ExpectedCategory)' for '$($case.Prompt)'" `
+                -Expected $case.ExpectedCategory `
+                -Actual $caseTask.category
+        }
+    }
+
+    $processFilesAfterCreate = @(Get-ChildItem -Path (Join-Path $botDir ".control\processes") -Filter "*.json" -File -ErrorAction SilentlyContinue)
+    Assert-Equal -Name "Direct task creation does not spawn a tracked background process" `
+        -Expected $processFilesBeforeCreate.Count `
+        -Actual $processFilesAfterCreate.Count
 
     $structuredEditResult = Update-RoadmapTask -TaskId "task-object" -Actor "dotbot-test" -Updates @{
         description = "Structured task updated"
@@ -391,6 +539,9 @@ try {
     Assert-FileContains -Name "Deleted archive UI renders RESTORED state" `
         -Path $roadmapActionsScript `
         -Pattern 'RESTORED'
+    Assert-FileContains -Name "Task create UI refreshes state immediately after success" `
+        -Path $actionsScriptPath `
+        -Pattern 'await pollState\(\);'
     Assert-FileContains -Name "Deleted archive UI uses restore state flag" `
         -Path $roadmapActionsScript `
         -Pattern 'version\?\.is_restored === true'
