@@ -1065,7 +1065,13 @@
         <div class="modal modal-task-detail">
             <div class="modal-header">
                 <span class="modal-title" id="modal-task-name">Task Details</span>
-                <button class="modal-close" id="modal-close"><!-- Close icon loaded dynamically --></button>
+                <div class="task-modal-header-actions">
+                    <button class="ctrl-btn-sm primary task-modal-edit-btn" id="task-modal-edit-btn" type="button" hidden>
+                        <span class="task-modal-edit-icon" aria-hidden="true">✎</span>
+                        <span>Edit Task</span>
+                    </button>
+                    <button class="modal-close" id="modal-close"><!-- Close icon loaded dynamically --></button>
+                </div>
             </div>
             <div class="modal-body" id="modal-task-content">
                 <!-- Task details rendered by showTaskModal() -->

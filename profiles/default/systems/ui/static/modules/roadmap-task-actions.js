@@ -5,6 +5,7 @@
 
 let roadmapEditingTaskId = null;
 let roadmapEditingTaskSource = null;
+let roadmapTaskEditReturnTarget = null;
 
 function getRoadmapActor() {
     return currentProfileName ? `ui:${currentProfileName}` : 'ui';
@@ -340,20 +341,39 @@ function initRoadmapTaskActions() {
 
     document.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') return;
-        closeRoadmapTaskEditModal();
-        closeDeletedTasksModal();
+
+        const taskEditModalVisible = document.getElementById('task-edit-modal')?.classList.contains('visible');
+        const deletedTasksModalVisible = document.getElementById('deleted-tasks-modal')?.classList.contains('visible');
+        if (!taskEditModalVisible && !deletedTasksModalVisible) {
+            return;
+        }
+
+        event.preventDefault();
+
+        if (taskEditModalVisible) {
+            closeRoadmapTaskEditModal();
+        }
+        if (deletedTasksModalVisible) {
+            closeDeletedTasksModal();
+        }
     });
 }
 
-function openRoadmapTaskEditModal(taskId) {
+function openRoadmapTaskEditModal(taskId, options = {}) {
     const task = getRoadmapTaskById(taskId);
     if (!task) {
         showToast('Task not found in roadmap state', 'error');
-        return;
+        return false;
     }
 
     roadmapEditingTaskId = taskId;
     roadmapEditingTaskSource = task;
+    roadmapTaskEditReturnTarget = options.returnToTaskModal
+        ? {
+            task: options.returnTaskSnapshot || task,
+            section: options.returnSection || 'overview'
+        }
+        : null;
     document.getElementById('task-edit-modal-title').textContent = `Edit Task: ${task.name || task.id}`;
     document.getElementById('task-edit-id').value = task.id || '';
     document.getElementById('task-edit-name').value = task.name || '';
@@ -368,12 +388,47 @@ function openRoadmapTaskEditModal(taskId) {
 
     document.getElementById('task-edit-modal')?.classList.add('visible');
     loadRoadmapTaskHistory(taskId);
+    return true;
 }
 
-function closeRoadmapTaskEditModal() {
+function resetRoadmapTaskEditModal() {
+    document.getElementById('task-edit-modal-title').textContent = 'Edit Task';
+    document.getElementById('task-edit-id').value = '';
+    document.getElementById('task-edit-name').value = '';
+    document.getElementById('task-edit-description').value = '';
+    document.getElementById('task-edit-category').value = '';
+    document.getElementById('task-edit-priority').value = '';
+    document.getElementById('task-edit-effort').value = '';
+    document.getElementById('task-edit-dependencies').value = '';
+    document.getElementById('task-edit-steps').value = '';
+    document.getElementById('task-edit-criteria').value = '';
+    document.getElementById('task-edit-history-list').innerHTML = '<div class="empty-state">No task selected.</div>';
+
+    const saveButton = document.getElementById('task-edit-save');
+    if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent = 'Save Changes';
+    }
+}
+
+function closeRoadmapTaskEditModal(options = {}) {
+    const shouldReturnToTaskModal = options.returnToTaskModal !== false;
+    const returnTarget = shouldReturnToTaskModal ? roadmapTaskEditReturnTarget : null;
+
     roadmapEditingTaskId = null;
     roadmapEditingTaskSource = null;
+    roadmapTaskEditReturnTarget = null;
     document.getElementById('task-edit-modal')?.classList.remove('visible');
+    resetRoadmapTaskEditModal();
+
+    if (!returnTarget?.task || typeof showTaskModal !== 'function') {
+        return;
+    }
+
+    const refreshedTask = typeof findTaskById === 'function'
+        ? findTaskById(returnTarget.task.id)
+        : null;
+    showTaskModal(refreshedTask || returnTarget.task, { initialSection: returnTarget.section });
 }
 
 function getTaskListItemText(item) {
@@ -549,7 +604,7 @@ async function submitRoadmapTaskEdit() {
         }
 
         showToast('Task updated and versioned', 'success');
-        closeRoadmapTaskEditModal();
+        closeRoadmapTaskEditModal({ returnToTaskModal: false });
         refreshRoadmapState(100);
     } catch (error) {
         showToast(`Failed to save task: ${error.message}`, 'error');
@@ -637,7 +692,7 @@ async function deleteRoadmapTask(taskId) {
         }
 
         showToast('Task deleted and archived', 'success');
-        closeRoadmapTaskEditModal();
+        closeRoadmapTaskEditModal({ returnToTaskModal: false });
         refreshRoadmapState(100);
     } catch (error) {
         showToast(`Failed to delete task: ${error.message}`, 'error');
@@ -661,7 +716,7 @@ async function restoreRoadmapTaskVersion(taskId, versionId) {
         }
 
         showToast('Task version restored', 'success');
-        closeRoadmapTaskEditModal();
+        closeRoadmapTaskEditModal({ returnToTaskModal: false });
         refreshRoadmapState(100);
         if (document.getElementById('deleted-tasks-modal')?.classList.contains('visible')) {
             setTimeout(openDeletedTasksModal, 200);
@@ -739,9 +794,6 @@ function refreshRoadmapState(delayMs = 0) {
         }
     }, delayMs);
 }
-
-
-
 
 
 

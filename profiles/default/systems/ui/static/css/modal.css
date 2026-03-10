@@ -53,6 +53,39 @@
     font-size: 13px;
     font-weight: 600;
     color: var(--color-primary);
+    min-width: 0;
+}
+
+.task-modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.task-modal-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.task-modal-edit-btn:hover {
+    transform: translateY(-1px);
+}
+
+.task-modal-edit-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.task-modal-edit-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
 }
 
 .modal-close {
@@ -1837,6 +1870,19 @@
         max-width: 100%;
         width: 100%;
         max-height: 95vh;
+    }
+
+    .task-modal-header-actions {
+        gap: 8px;
+    }
+
+    .task-modal-edit-btn {
+        padding: 6px 10px;
+        font-size: 9px;
+    }
+
+    .task-modal-edit-btn span:last-child {
+        display: none;
     }
 
     .task-modal-layout {
