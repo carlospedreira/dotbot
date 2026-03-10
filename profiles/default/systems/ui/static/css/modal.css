@@ -53,6 +53,59 @@
     font-size: 13px;
     font-weight: 600;
     color: var(--color-primary);
+    min-width: 0;
+}
+
+.task-modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.task-modal-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border: 1px solid var(--color-primary-dim);
+    border-radius: 999px;
+    background:
+        linear-gradient(135deg, var(--primary-15), transparent 70%),
+        var(--bg-black-overlay-heavy);
+    color: var(--color-primary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: inset 0 0 0 1px var(--primary-08), 0 0 18px var(--primary-08);
+    transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.task-modal-edit-btn:hover {
+    border-color: var(--color-primary);
+    background:
+        linear-gradient(135deg, var(--primary-25), transparent 72%),
+        var(--bg-black-overlay-heavy);
+    box-shadow: inset 0 0 0 1px var(--primary-12), 0 0 24px var(--primary-12);
+    transform: translateY(-1px);
+}
+
+.task-modal-edit-btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.task-modal-edit-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--primary-12);
+    color: var(--color-primary);
 }
 
 .modal-close {
@@ -860,19 +913,6 @@
     color: var(--color-primary-dim);
     line-height: 1.7;
     margin-top: 12px;
-}
-
-.task-overview-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 20px;
-}
-
-.task-overview-actions-note {
-    font-size: 11px;
-    color: var(--label-color);
 }
 
 /* Metadata grid */
@@ -1765,6 +1805,19 @@
         max-width: 100%;
         width: 100%;
         max-height: 95vh;
+    }
+
+    .task-modal-header-actions {
+        gap: 8px;
+    }
+
+    .task-modal-edit-btn {
+        padding: 6px 10px;
+        font-size: 9px;
+    }
+
+    .task-modal-edit-btn span:last-child {
+        display: none;
     }
 
     .task-modal-layout {

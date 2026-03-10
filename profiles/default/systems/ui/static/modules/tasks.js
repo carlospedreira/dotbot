@@ -3,6 +3,9 @@
  * Task modal display and management
  */
 
+let taskModalCurrentTask = null;
+let taskModalCurrentSection = 'overview';
+
 /**
  * Initialize task click handlers
  */
@@ -69,11 +72,51 @@ function getEditableRoadmapTask(taskId) {
     return lastState.tasks.upcoming.find(task => task.id === taskId) || null;
 }
 
+function closeTaskModal() {
+    taskModalCurrentTask = null;
+    taskModalCurrentSection = 'overview';
+    document.getElementById('task-modal')?.classList.remove('visible');
+    const editButton = document.getElementById('task-modal-edit-btn');
+    if (editButton) {
+        editButton.hidden = true;
+        editButton.dataset.taskId = '';
+    }
+}
+
+function setTaskModalEditButton(task) {
+    const editButton = document.getElementById('task-modal-edit-btn');
+    if (!editButton) {
+        return;
+    }
+
+    const editableTask = getEditableRoadmapTask(task?.id);
+    if (!editableTask) {
+        editButton.hidden = true;
+        editButton.dataset.taskId = '';
+        editButton.title = '';
+        editButton.setAttribute('aria-hidden', 'true');
+        return;
+    }
+
+    editButton.hidden = false;
+    editButton.dataset.taskId = editableTask.id || '';
+    editButton.title = `Edit ${editableTask.name || editableTask.id || 'task'}`;
+    editButton.setAttribute('aria-hidden', 'false');
+}
+
+function resolveInitialTaskModalSection(initialSection, sectionAvailability) {
+    if (initialSection && sectionAvailability[initialSection]) {
+        return initialSection;
+    }
+
+    return 'overview';
+}
+
 /**
  * Show task details modal with sidebar navigation
  * @param {Object} task - Task object to display
  */
-function showTaskModal(task) {
+function showTaskModal(task, options = {}) {
     const modal = document.getElementById('task-modal');
     const titleEl = document.getElementById('modal-task-name');
     const contentEl = document.getElementById('modal-task-content');
@@ -91,26 +134,35 @@ function showTaskModal(task) {
     const executionLog = task.execution_activity_log || task.activity_log;
     const hasAnalysisActivity = analysisLog && analysisLog.length > 0;
     const hasExecutionActivity = executionLog && executionLog.length > 0;
+    const sectionAvailability = {
+        overview: true,
+        requirements: hasSteps || hasCriteria,
+        analysis: hasAnalysis,
+        commits: !!hasCommits,
+        'analysis-activity': !!hasAnalysisActivity,
+        'execution-activity': !!hasExecutionActivity
+    };
+    const activeSection = resolveInitialTaskModalSection(options.initialSection, sectionAvailability);
 
     // Build sidebar navigation
     let sidebarHtml = `
         <div class="task-modal-nav">
-            <div class="task-modal-nav-item active" data-section="overview">
+            <div class="task-modal-nav-item ${activeSection === 'overview' ? 'active' : ''}" data-section="overview">
                 <span class="nav-icon">◇</span>Overview
             </div>
-            <div class="task-modal-nav-item ${!hasSteps && !hasCriteria ? 'disabled' : ''}" data-section="requirements">
+            <div class="task-modal-nav-item ${!hasSteps && !hasCriteria ? 'disabled' : ''} ${activeSection === 'requirements' ? 'active' : ''}" data-section="requirements">
                 <span class="nav-icon">☐</span>Requirements
             </div>
-            <div class="task-modal-nav-item ${!hasAnalysis ? 'disabled' : ''}" data-section="analysis">
+            <div class="task-modal-nav-item ${!hasAnalysis ? 'disabled' : ''} ${activeSection === 'analysis' ? 'active' : ''}" data-section="analysis">
                 <span class="nav-icon">◈</span>Analysis
             </div>
-            <div class="task-modal-nav-item ${!hasCommits ? 'disabled' : ''}" data-section="commits">
+            <div class="task-modal-nav-item ${!hasCommits ? 'disabled' : ''} ${activeSection === 'commits' ? 'active' : ''}" data-section="commits">
                 <span class="nav-icon">⎇</span>Commits
             </div>
-            <div class="task-modal-nav-item ${!hasAnalysisActivity ? 'disabled' : ''}" data-section="analysis-activity">
+            <div class="task-modal-nav-item ${!hasAnalysisActivity ? 'disabled' : ''} ${activeSection === 'analysis-activity' ? 'active' : ''}" data-section="analysis-activity">
                 <span class="nav-icon">◎</span>Analysis Activity
             </div>
-            <div class="task-modal-nav-item ${!hasExecutionActivity ? 'disabled' : ''}" data-section="execution-activity">
+            <div class="task-modal-nav-item ${!hasExecutionActivity ? 'disabled' : ''} ${activeSection === 'execution-activity' ? 'active' : ''}" data-section="execution-activity">
                 <span class="nav-icon">▶</span>Execution Activity
             </div>
         </div>
@@ -120,32 +172,32 @@ function showTaskModal(task) {
     let mainHtml = '';
 
     // === OVERVIEW SECTION ===
-    mainHtml += `<div class="task-modal-section active" data-section="overview">`;
+    mainHtml += `<div class="task-modal-section ${activeSection === 'overview' ? 'active' : ''}" data-section="overview">`;
     mainHtml += buildOverviewSection(task);
     mainHtml += `</div>`;
 
     // === REQUIREMENTS SECTION ===
-    mainHtml += `<div class="task-modal-section" data-section="requirements">`;
+    mainHtml += `<div class="task-modal-section ${activeSection === 'requirements' ? 'active' : ''}" data-section="requirements">`;
     mainHtml += buildRequirementsSection(task);
     mainHtml += `</div>`;
 
     // === ANALYSIS SECTION ===
-    mainHtml += `<div class="task-modal-section" data-section="analysis">`;
+    mainHtml += `<div class="task-modal-section ${activeSection === 'analysis' ? 'active' : ''}" data-section="analysis">`;
     mainHtml += buildAnalysisSection(task);
     mainHtml += `</div>`;
 
     // === COMMITS SECTION ===
-    mainHtml += `<div class="task-modal-section" data-section="commits">`;
+    mainHtml += `<div class="task-modal-section ${activeSection === 'commits' ? 'active' : ''}" data-section="commits">`;
     mainHtml += buildCommitsSection(task);
     mainHtml += `</div>`;
 
     // === ANALYSIS ACTIVITY SECTION ===
-    mainHtml += `<div class="task-modal-section activity-fill" data-section="analysis-activity">`;
+    mainHtml += `<div class="task-modal-section activity-fill ${activeSection === 'analysis-activity' ? 'active' : ''}" data-section="analysis-activity">`;
     mainHtml += buildAnalysisActivitySection(task);
     mainHtml += `</div>`;
 
     // === EXECUTION ACTIVITY SECTION ===
-    mainHtml += `<div class="task-modal-section activity-fill" data-section="execution-activity">`;
+    mainHtml += `<div class="task-modal-section activity-fill ${activeSection === 'execution-activity' ? 'active' : ''}" data-section="execution-activity">`;
     mainHtml += buildExecutionActivitySection(task);
     mainHtml += `</div>`;
 
@@ -158,11 +210,15 @@ function showTaskModal(task) {
     `;
 
     contentEl.innerHTML = html;
+    taskModalCurrentTask = task;
+    taskModalCurrentSection = activeSection;
+    setTaskModalEditButton(task);
 
     // Setup navigation click handlers
     contentEl.querySelectorAll('.task-modal-nav-item:not(.disabled)').forEach(item => {
         item.addEventListener('click', () => {
             const section = item.dataset.section;
+            taskModalCurrentSection = section;
             // Update nav active state
             contentEl.querySelectorAll('.task-modal-nav-item').forEach(n => n.classList.remove('active'));
             item.classList.add('active');
@@ -170,17 +226,6 @@ function showTaskModal(task) {
             contentEl.querySelectorAll('.task-modal-section').forEach(s => s.classList.remove('active'));
             contentEl.querySelector(`.task-modal-section[data-section="${section}"]`)?.classList.add('active');
         });
-    });
-
-    contentEl.querySelector('[data-task-detail-action="edit-task"]')?.addEventListener('click', () => {
-        if (typeof openRoadmapTaskEditModal !== 'function') {
-            showToast('Roadmap editor is unavailable', 'error');
-            return;
-        }
-
-        if (openRoadmapTaskEditModal(task.id)) {
-            modal.classList.remove('visible');
-        }
     });
 
     modal.classList.add('visible');
@@ -191,7 +236,6 @@ function showTaskModal(task) {
  */
 function buildOverviewSection(task) {
     let html = '';
-    const canEditTask = !!getEditableRoadmapTask(task.id);
 
     // Task identity
     html += `<div class="task-identity">`;
@@ -201,13 +245,6 @@ function buildOverviewSection(task) {
         html += `<div class="task-identity-description">${escapeHtml(task.description)}</div>`;
     }
     html += `</div>`;
-
-    if (canEditTask) {
-        html += `<div class="task-overview-actions">`;
-        html += `<button class="ctrl-btn-sm primary" type="button" data-task-detail-action="edit-task">Edit Task</button>`;
-        html += `<span class="task-overview-actions-note">Uses the roadmap editor with version history.</span>`;
-        html += `</div>`;
-    }
 
     // Metadata grid
     html += `<div class="task-meta-grid">`;
@@ -815,20 +852,44 @@ function buildActivityItem(entry) {
 function initModalClose() {
     const modal = document.getElementById('task-modal');
     const closeBtn = document.getElementById('modal-close');
+    const editBtn = document.getElementById('task-modal-edit-btn');
 
     closeBtn?.addEventListener('click', () => {
-        modal?.classList.remove('visible');
+        closeTaskModal();
     });
 
     modal?.addEventListener('click', (e) => {
         if (e.target === modal) {
-            modal.classList.remove('visible');
+            closeTaskModal();
+        }
+    });
+
+    editBtn?.addEventListener('click', () => {
+        if (!taskModalCurrentTask) {
+            return;
+        }
+
+        if (typeof openRoadmapTaskEditModal !== 'function') {
+            showToast('Roadmap editor is unavailable', 'error');
+            return;
+        }
+
+        if (openRoadmapTaskEditModal(taskModalCurrentTask.id, {
+            returnToTaskModal: true,
+            returnTaskSnapshot: taskModalCurrentTask,
+            returnSection: taskModalCurrentSection
+        })) {
+            closeTaskModal();
         }
     });
 
     document.addEventListener('keydown', (e) => {
+        if (e.defaultPrevented) {
+            return;
+        }
+
         if (e.key === 'Escape') {
-            modal?.classList.remove('visible');
+            closeTaskModal();
             document.getElementById('plan-modal')?.classList.remove('visible');
         }
     });
@@ -905,5 +966,3 @@ function initPlanModalClose() {
         }
     });
 }
-
-
