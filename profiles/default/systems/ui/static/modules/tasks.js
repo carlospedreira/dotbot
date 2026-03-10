@@ -64,12 +64,25 @@ function findTaskById(id) {
     return null;
 }
 
-function getEditableRoadmapTask(taskId) {
-    if (!taskId || !Array.isArray(lastState?.tasks?.upcoming)) {
+function getEditableRoadmapTask(task) {
+    if (!task?.id || !Array.isArray(lastState?.tasks?.upcoming)) {
         return null;
     }
 
-    return lastState.tasks.upcoming.find(task => task.id === taskId) || null;
+    if (lastState?.tasks?.current?.id === task.id) {
+        return null;
+    }
+
+    if (task.status !== 'todo') {
+        return null;
+    }
+
+    const editableTask = lastState.tasks.upcoming.find(upcomingTask => upcomingTask.id === task.id) || null;
+    if (!editableTask || editableTask.status !== 'todo') {
+        return null;
+    }
+
+    return editableTask;
 }
 
 function closeTaskModal() {
@@ -89,7 +102,7 @@ function setTaskModalEditButton(task) {
         return;
     }
 
-    const editableTask = getEditableRoadmapTask(task?.id);
+    const editableTask = getEditableRoadmapTask(task);
     if (!editableTask) {
         editButton.hidden = true;
         editButton.dataset.taskId = '';
