@@ -206,6 +206,111 @@ function showToast(message, type = 'info', duration = 5000) {
     }
 }
 
+let notificationAudioContext = null;
+let notificationAudioUnlockBound = false;
+
+/**
+ * Prepare the notification audio context and unlock it on first user gesture.
+ */
+function initNotificationAudio() {
+    if (notificationAudioUnlockBound) return;
+    notificationAudioUnlockBound = true;
+
+    const unlock = () => {
+        const ctx = getNotificationAudioContext();
+        if (!ctx) return;
+
+        ctx.resume().catch(() => {});
+        if (ctx.state === 'running') {
+            document.removeEventListener('pointerdown', unlock);
+            document.removeEventListener('keydown', unlock);
+        }
+    };
+
+    document.addEventListener('pointerdown', unlock, { passive: true });
+    document.addEventListener('keydown', unlock);
+}
+
+/**
+ * Play a short synthesized cue for in-app notifications.
+ * @param {string} cue - Cue name: start, success, horn, warning, error, skipped, movement, session
+ */
+function playNotificationSound(cue = 'movement') {
+    const ctx = getNotificationAudioContext();
+    if (!ctx || ctx.state !== 'running') return;
+
+    const now = ctx.currentTime + 0.01;
+
+    const tone = ({ start = 0, duration = 0.16, frequency = 440, endFrequency = null, type = 'sine', gain = 0.035 }) => {
+        const oscillator = ctx.createOscillator();
+        const envelope = ctx.createGain();
+        const startTime = now + start;
+        const endTime = startTime + duration;
+
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, startTime);
+        if (endFrequency !== null) {
+            oscillator.frequency.exponentialRampToValueAtTime(Math.max(endFrequency, 1), endTime);
+        }
+
+        envelope.gain.setValueAtTime(0.0001, startTime);
+        envelope.gain.exponentialRampToValueAtTime(gain, startTime + 0.02);
+        envelope.gain.exponentialRampToValueAtTime(0.0001, endTime);
+
+        oscillator.connect(envelope);
+        envelope.connect(ctx.destination);
+        oscillator.start(startTime);
+        oscillator.stop(endTime + 0.02);
+    };
+
+    switch (cue) {
+        case 'start':
+            tone({ frequency: 440, endFrequency: 660, type: 'triangle', duration: 0.12, gain: 0.03 });
+            tone({ start: 0.13, frequency: 660, endFrequency: 880, type: 'triangle', duration: 0.12, gain: 0.026 });
+            break;
+        case 'success':
+            tone({ frequency: 523.25, type: 'sine', duration: 0.14, gain: 0.035 });
+            tone({ start: 0.1, frequency: 659.25, type: 'sine', duration: 0.16, gain: 0.03 });
+            tone({ start: 0.22, frequency: 783.99, type: 'sine', duration: 0.22, gain: 0.028 });
+            break;
+        case 'horn':
+            tone({ frequency: 220, endFrequency: 196, type: 'sawtooth', duration: 0.28, gain: 0.045 });
+            tone({ frequency: 277.18, endFrequency: 246.94, type: 'square', duration: 0.28, gain: 0.028 });
+            tone({ start: 0.2, frequency: 220, endFrequency: 196, type: 'sawtooth', duration: 0.3, gain: 0.04 });
+            tone({ start: 0.2, frequency: 277.18, endFrequency: 246.94, type: 'square', duration: 0.3, gain: 0.025 });
+            break;
+        case 'warning':
+            tone({ frequency: 392, type: 'triangle', duration: 0.13, gain: 0.03 });
+            tone({ start: 0.16, frequency: 392, type: 'triangle', duration: 0.13, gain: 0.03 });
+            break;
+        case 'error':
+            tone({ frequency: 180, endFrequency: 120, type: 'sawtooth', duration: 0.32, gain: 0.045 });
+            tone({ start: 0.08, frequency: 130, endFrequency: 90, type: 'square', duration: 0.28, gain: 0.03 });
+            break;
+        case 'skipped':
+            tone({ frequency: 523.25, endFrequency: 440, type: 'triangle', duration: 0.12, gain: 0.025 });
+            tone({ start: 0.11, frequency: 392, endFrequency: 329.63, type: 'triangle', duration: 0.16, gain: 0.022 });
+            break;
+        case 'session':
+            tone({ frequency: 349.23, type: 'sine', duration: 0.12, gain: 0.022 });
+            tone({ start: 0.1, frequency: 466.16, type: 'sine', duration: 0.14, gain: 0.02 });
+            break;
+        default:
+            tone({ frequency: 740, type: 'triangle', duration: 0.09, gain: 0.02 });
+            break;
+    }
+}
+
+function getNotificationAudioContext() {
+    if (notificationAudioContext) return notificationAudioContext;
+
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) return null;
+
+    notificationAudioContext = new AudioContextCtor();
+    return notificationAudioContext;
+}
+
 /**
  * Format duration between two ISO date strings
  * @param {string} startIso - Start ISO date string

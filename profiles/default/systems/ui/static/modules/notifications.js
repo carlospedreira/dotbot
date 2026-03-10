@@ -16,6 +16,10 @@ let lastGitStatus = null;
  * Initialize notifications system
  */
 function initNotifications() {
+    if (typeof initNotificationAudio === 'function') {
+        initNotificationAudio();
+    }
+
     // Start git status polling
     pollGitStatus();
     gitPollTimer = setInterval(pollGitStatus, GIT_POLL_INTERVAL);
@@ -35,6 +39,7 @@ function checkNotifications(state) {
 
     const prev = prevNotifyState;
     const curr = snapshotState(state);
+    let playedEventCue = false;
 
     // Task completed
     if (curr.done > prev.done) {
@@ -45,38 +50,58 @@ function checkNotifications(state) {
         } else {
             showToast(`${count} task${count > 1 ? 's' : ''} completed`, 'success', 6000);
         }
+        playNotificationSound('success');
+        playedEventCue = true;
     }
 
     // Task needs input (action required increased)
     if (curr.needsInput > prev.needsInput) {
         const count = curr.needsInput - prev.needsInput;
         showToast(`${count} task${count > 1 ? 's' : ''} need${count === 1 ? 's' : ''} your input`, 'warning', 8000);
+        playNotificationSound('horn');
+        playedEventCue = true;
     }
 
     // New task started (in-progress increased)
     if (curr.inProgress > prev.inProgress && curr.currentTaskName && curr.currentTaskName !== prev.currentTaskName) {
         showToast(`Started: ${curr.currentTaskName}`, 'info', 5000);
+        playNotificationSound('start');
+        playedEventCue = true;
     }
 
     // Session status changes
     if (curr.sessionStatus !== prev.sessionStatus && prev.sessionStatus) {
         if (curr.sessionStatus === 'running' && prev.sessionStatus !== 'running') {
             showToast('Session started', 'info', 4000);
+            playNotificationSound('session');
+            playedEventCue = true;
         } else if (curr.sessionStatus === 'paused' && prev.sessionStatus === 'running') {
             showToast('Session paused', 'warning', 4000);
+            playNotificationSound('warning');
+            playedEventCue = true;
         } else if (curr.sessionStatus === 'stopped' && prev.sessionStatus === 'running') {
             showToast('Session stopped', 'info', 4000);
+            playNotificationSound('warning');
+            playedEventCue = true;
         }
     }
 
     // Consecutive failures increased
     if (curr.failures > prev.failures && curr.failures > 0) {
         showToast(`Consecutive failure #${curr.failures}`, 'error', 6000);
+        playNotificationSound('error');
+        playedEventCue = true;
     }
 
     // Task skipped
     if (curr.skipped > prev.skipped) {
         showToast('Task skipped', 'warning', 5000);
+        playNotificationSound('skipped');
+        playedEventCue = true;
+    }
+
+    if (!playedEventCue && hasTaskMovement(prev, curr)) {
+        playNotificationSound('movement');
     }
 
     prevNotifyState = curr;
@@ -89,6 +114,9 @@ function checkNotifications(state) {
  */
 function snapshotState(state) {
     return {
+        todo: state.tasks?.todo || 0,
+        analysing: state.tasks?.analysing || 0,
+        analysed: state.tasks?.analysed || 0,
         done: state.tasks?.done || 0,
         inProgress: state.tasks?.in_progress || 0,
         needsInput: state.tasks?.needs_input || 0,
@@ -117,6 +145,16 @@ function findNewlyCompletedTask(state, prev) {
         }
     }
     return null;
+}
+
+function hasTaskMovement(prev, curr) {
+    return prev.todo !== curr.todo ||
+        prev.analysing !== curr.analysing ||
+        prev.analysed !== curr.analysed ||
+        prev.done !== curr.done ||
+        prev.inProgress !== curr.inProgress ||
+        prev.needsInput !== curr.needsInput ||
+        prev.skipped !== curr.skipped;
 }
 
 /**
