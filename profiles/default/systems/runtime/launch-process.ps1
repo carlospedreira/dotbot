@@ -2430,7 +2430,7 @@ IMPORTANT: If creating mission.md, it MUST begin with ## Executive Summary as th
                         # 1. ASK — Set process to needs-input, poll for answers
                         $processData.status = 'needs-input'
                         $processData.pending_questions = $phaseQData
-                        $processData.heartbeat_status = "Waiting for answers (phase $phaseNum: $phaseName)"
+                        $processData.heartbeat_status = "Waiting for answers (phase ${phaseNum}: $phaseName)"
                         Write-ProcessFile -Id $procId -Data $processData
 
                         if (Test-Path $phaseAnswersPath) { Remove-Item $phaseAnswersPath -Force }
