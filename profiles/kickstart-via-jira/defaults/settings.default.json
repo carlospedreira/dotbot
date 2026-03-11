@@ -212,7 +212,7 @@
         "id": "create-impl-tasks",
         "name": "Implementation Tasks",
         "type": "llm",
-        "workflow": "09-implement-changes.md",
+        "workflow": "09-create-impl-tasks.md",
         "condition": "file_exists:workspace/product/briefing/04_IMPLEMENTATION_RESEARCH.md",
         "required_outputs_dir": "tasks/todo",
         "min_output_count": 1,
