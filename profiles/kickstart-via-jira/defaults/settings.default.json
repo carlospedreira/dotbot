@@ -134,13 +134,34 @@
         "commit_message": "chore(kickstart): phase 1 — product documents"
       },
       {
-        "id": "plan-research",
-        "name": "Create Research Tasks",
-        "workflow": "02-plan-research.md",
+        "id": "plan-internet-research",
+        "name": "Create Internet Research Task",
+        "workflow": "02a-plan-internet-research.md",
+        "optional": true,
         "required_outputs_dir": "tasks/todo",
         "min_output_count": 1,
-        "commit_paths": ["workspace/tasks/", "workspace/product/"],
-        "commit_message": "chore(kickstart): phase 2 — research tasks created"
+        "commit_paths": ["workspace/tasks/"],
+        "commit_message": "chore(kickstart): phase 2a — internet research task created"
+      },
+      {
+        "id": "plan-atlassian-research",
+        "name": "Create Atlassian Research Task",
+        "workflow": "02b-plan-atlassian-research.md",
+        "optional": true,
+        "required_outputs_dir": "tasks/todo",
+        "min_output_count": 1,
+        "commit_paths": ["workspace/tasks/"],
+        "commit_message": "chore(kickstart): phase 2b — atlassian research task created"
+      },
+      {
+        "id": "plan-sourcebot-research",
+        "name": "Create Sourcebot Research Task",
+        "workflow": "02c-plan-sourcebot-research.md",
+        "optional": true,
+        "required_outputs_dir": "tasks/todo",
+        "min_output_count": 1,
+        "commit_paths": ["workspace/tasks/"],
+        "commit_message": "chore(kickstart): phase 2c — sourcebot research task created"
       },
       {
         "id": "execute-research",

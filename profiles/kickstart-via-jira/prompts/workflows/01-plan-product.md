@@ -115,13 +115,13 @@ This document outlines the research phases that will inform the implementation p
 
 ### Phase 1: Foundational Research
 
-Three parallel/sequential research tasks:
+Three independently toggleable research streams (each is an optional kickstart phase):
 
 | # | Task | Methodology | Dependencies | Output |
 |---|------|-------------|--------------|--------|
-| 1 | Atlassian Research | `atlassian.md` | None | `research-documents.md` |
-| 2 | Public/Regulatory Research | `public.md` | None | `research-internet.md` |
-| 3 | Repository Impact Scan | `repos.md` | Tasks 1, 2 | `research-repos.md` |
+| 2a | Internet Research | `public.md` | None | `research-internet.md` |
+| 2b | Atlassian Research | `atlassian.md` | None | `research-documents.md` |
+| 2c | Repository Impact Scan | `repos.md` | None | `research-repos.md` |
 
 ### Phase 2: Deep Dives
 
