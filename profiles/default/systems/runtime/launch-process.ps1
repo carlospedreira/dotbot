@@ -1015,6 +1015,8 @@ Work on this task autonomously. When complete, ensure you call task_mark_done vi
                 $prompt = $prompt -replace '\{\{ACCEPTANCE_CRITERIA\}\}', $acceptanceCriteria
                 $steps = if ($task.steps) { ($task.steps | ForEach-Object { "- $_" }) -join "`n" } else { "No specific steps defined." }
                 $prompt = $prompt -replace '\{\{TASK_STEPS\}\}', $steps
+                $splitThreshold = if ($settings.analysis.split_threshold_effort) { $settings.analysis.split_threshold_effort } else { 'XL' }
+                $prompt = $prompt -replace '\{\{SPLIT_THRESHOLD_EFFORT\}\}', $splitThreshold
 
                 $branchForPrompt = "main"
                 $prompt = $prompt -replace '\{\{BRANCH_NAME\}\}', $branchForPrompt
@@ -1542,6 +1544,8 @@ elseif ($Type -eq 'workflow') {
             $analysisPrompt = $analysisPrompt -replace '\{\{ACCEPTANCE_CRITERIA\}\}', $acceptanceCriteria
             $steps = if ($task.steps) { ($task.steps | ForEach-Object { "- $_" }) -join "`n" } else { "No specific steps defined." }
             $analysisPrompt = $analysisPrompt -replace '\{\{TASK_STEPS\}\}', $steps
+            $splitThreshold = if ($settings.analysis.split_threshold_effort) { $settings.analysis.split_threshold_effort } else { 'XL' }
+            $analysisPrompt = $analysisPrompt -replace '\{\{SPLIT_THRESHOLD_EFFORT\}\}', $splitThreshold
             $analysisPrompt = $analysisPrompt -replace '\{\{BRANCH_NAME\}\}', 'main'
 
             # Build resolved questions context for resumed tasks

@@ -379,7 +379,7 @@ Then STOP and wait. Do not continue analysis until question is answered.
 If the task is too large for a single implementation session, propose splitting.
 
 **Split criteria:**
-- Effort is XL or greater
+- Effort is {{SPLIT_THRESHOLD_EFFORT}} or higher — splitting is MANDATORY, not optional
 - Multiple independent features bundled together
 - Implementation would exceed ~25,000 tokens
 
