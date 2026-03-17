@@ -1,4 +1,4 @@
-# dotbot-v3
+# dotbot
 
 **Structured, auditable AI-assisted development for teams.**
 
@@ -48,7 +48,7 @@ dotbot wraps AI-assisted coding in a managed, transparent workflow where every s
 **One-liner (recommended):**
 
 ```powershell
-irm https://raw.githubusercontent.com/andresharpe/dotbot-v3/main/install-remote.ps1 | iex
+irm https://raw.githubusercontent.com/andresharpe/dotbot/main/install-remote.ps1 | iex
 ```
 
 <details>
@@ -74,7 +74,7 @@ brew install dotbot
 **Git clone:**
 ```powershell
 cd ~
-git clone https://github.com/andresharpe/dotbot-v3 dotbot-install
+git clone https://github.com/andresharpe/dotbot dotbot-install
 cd dotbot-install
 pwsh install.ps1
 ```
