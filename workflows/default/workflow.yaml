@@ -1,8 +1,8 @@
 name: default
 version: "3.5.0"
 author:
-  name: "dotbot"
-  url: "https://github.com/andresharpe/dotbot"
+  name: "Andre Sharpe"
+  url: "https://github.com/andresharpe"
 description: >-
   Lightweight kickstart workflow — generates a single product document
   from a user prompt, with optional internet research.
