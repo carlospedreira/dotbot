@@ -1,9 +1,30 @@
 name: default
 version: "3.5.0"
+author:
+  name: "dotbot"
+  url: "https://github.com/andresharpe/dotbot"
 description: >-
   Lightweight kickstart workflow — generates a single product document
   from a user prompt, with optional internet research.
+icon: terminal
+license: MIT
+tags: [core, framework]
+categories: [Development, AI]
+repository: https://github.com/andresharpe/dotbot
+homepage: https://github.com/andresharpe/dotbot#readme
 min_dotbot_version: "3.5.0"
+
+agents:
+  - implementer
+  - planner
+  - reviewer
+  - tester
+
+skills:
+  - status
+  - verify
+  - write-test-plan
+  - write-unit-tests
 
 form:
   modes:
