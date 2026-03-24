@@ -23,11 +23,7 @@ function Read-WorkflowManifest {
         [string]$WorkflowDir
     )
 
-    # Prefer workflow.yaml, fall back to profile.yaml
     $yamlPath = Join-Path $WorkflowDir "workflow.yaml"
-    if (-not (Test-Path $yamlPath)) {
-        $yamlPath = Join-Path $WorkflowDir "profile.yaml"
-    }
 
     $manifest = @{
         name = (Split-Path $WorkflowDir -Leaf)

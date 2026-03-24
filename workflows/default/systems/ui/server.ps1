@@ -1496,7 +1496,6 @@ try {
                     function Get-CachedManifest {
                         param([string]$Dir)
                         $yamlPath = Join-Path $Dir "workflow.yaml"
-                        if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $Dir "profile.yaml" }
                         if (-not (Test-Path $yamlPath)) { return $null }
                         $mtime = (Get-Item $yamlPath).LastWriteTimeUtc
                         $cached = $script:manifestCache[$Dir]
@@ -1579,7 +1578,7 @@ try {
                             $defaultAgents = @(Get-ChildItem $agentsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
                         }
                         if (Test-Path $skillsDir) {
-                            $defaultSkills = @(Get-ChildItem $skillsDir -Filter "*.md" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.BaseName })
+                            $defaultSkills = @(Get-ChildItem $skillsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
                         }
 
                         $installedList += @{
@@ -1630,9 +1629,16 @@ try {
                                 categories = if ($manifest.PSObject.Properties['categories']) { @($manifest.categories | Where-Object { $_ }) } else { @() }
                                 repository = if ($manifest.PSObject.Properties['repository']) { "$($manifest.repository)" } else { '' }
                                 homepage = if ($manifest.PSObject.Properties['homepage']) { "$($manifest.homepage)" } else { '' }
-                                agents = if ($manifest.PSObject.Properties['agents']) { @($manifest.agents | Where-Object { $_ }) } else { @() }
-                                skills = if ($manifest.PSObject.Properties['skills']) { @($manifest.skills | Where-Object { $_ }) } else { @() }
-                                tools = if ($manifest.PSObject.Properties['tools']) { @($manifest.tools | Where-Object { $_ }) } else { @() }
+                                agents = if ($manifest.PSObject.Properties['agents'] -and $manifest.agents) { @($manifest.agents | Where-Object { $_ }) } else {
+                                    # Fallback: discover from prompts directory
+                                    $wfAgentsDir = Join-Path $wfDir "prompts\agents"
+                                    if (Test-Path $wfAgentsDir) { @(Get-ChildItem $wfAgentsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) } else { @() }
+                                }
+                                skills = if ($manifest.PSObject.Properties['skills'] -and $manifest.skills) { @($manifest.skills | Where-Object { $_ }) } else {
+                                    $wfSkillsDir = Join-Path $wfDir "prompts\skills"
+                                    if (Test-Path $wfSkillsDir) { @(Get-ChildItem $wfSkillsDir -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) } else { @() }
+                                }
+                                tools = if ($manifest.PSObject.Properties['tools'] -and $manifest.tools) { @($manifest.tools | Where-Object { $_ }) } else { @() }
                                 status = if ($hasRunning) { 'running' } else { 'idle' }
                                 tasks = $wfTasks
                                 has_running_process = [bool]$hasRunning

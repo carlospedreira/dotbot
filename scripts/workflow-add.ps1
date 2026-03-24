@@ -78,8 +78,7 @@ $wfSourceDirFull = [System.IO.Path]::GetFullPath($wfSourceDir)
 Get-ChildItem -Path $wfSourceDir -Recurse -File | ForEach-Object {
     $relativePath = [System.IO.Path]::GetRelativePath($wfSourceDirFull, $_.FullName)
     $relativePathKey = $relativePath -replace '\\', '/'
-    if ($relativePathKey -eq "profile-init.ps1") { return }
-    if ($relativePathKey -eq "profile.yaml") { return }
+    if ($relativePathKey -eq "on-install.ps1") { return }
     if ($relativePathKey -eq "manifest.yaml") { return }
     if ($relativePathKey -match '^systems/mcp/tools/(.+)$') { $relativePath = "tools/$($Matches[1])" }
     if ($relativePathKey -eq "defaults/settings.default.json") { $relativePath = "settings.json" }
@@ -98,7 +97,6 @@ if (Test-Path $wfYamlSource) {
 } elseif (-not (Test-Path $wfYamlTarget)) {
     $manifestYaml = Join-Path $wfSourceDir "manifest.yaml"
     if (Test-Path $manifestYaml) { Copy-Item $manifestYaml $wfYamlTarget -Force }
-    elseif (Test-Path (Join-Path $wfSourceDir "profile.yaml")) { Copy-Item (Join-Path $wfSourceDir "profile.yaml") $wfYamlTarget -Force }
 }
 
 # Parse manifest

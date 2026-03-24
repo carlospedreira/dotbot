@@ -162,9 +162,6 @@ foreach ($entry in $config.registries) {
                     # Show workflow description from its manifest
                     if ($type -eq 'workflows' -and $exists) {
                         $wfManifest = Join-Path $itemPath "workflow.yaml"
-                        if (-not (Test-Path $wfManifest)) {
-                            $wfManifest = Join-Path $itemPath "profile.yaml"
-                        }
                         if (Test-Path $wfManifest) {
                             try {
                                 $wfMeta = Get-Content $wfManifest -Raw | ConvertFrom-Yaml

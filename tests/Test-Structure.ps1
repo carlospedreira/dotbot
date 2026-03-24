@@ -318,8 +318,8 @@ if (-not $dotbotInstalled) {
             Assert-PathExists -Name "--: .bot created with dotnet profile" -Path $botDir3
 
             # Check that dotnet-specific files exist (look for any file from the dotnet profile)
-            # Exclude profile-init.ps1 and profile.yaml which are intentionally not copied
-            $dotnetFiles = Get-ChildItem -Path $dotnetProfile -Recurse -File | Where-Object { $_.Name -ne "profile-init.ps1" -and $_.Name -ne "manifest.yaml" }
+            # Exclude on-install.ps1 and manifest.yaml which are intentionally not copied
+            $dotnetFiles = Get-ChildItem -Path $dotnetProfile -Recurse -File | Where-Object { $_.Name -ne "on-install.ps1" -and $_.Name -ne "manifest.yaml" }
             if ($dotnetFiles.Count -gt 0) {
                 $firstFile = $dotnetFiles[0]
                 $relativePath = [System.IO.Path]::GetRelativePath(
@@ -427,9 +427,9 @@ if (-not $dotbotInstalled) {
                 -Path $mrWorkflow99 `
                 -Pattern "\[bot:\{\{INSTANCE_ID_SHORT\}\}\]"
 
-            # profile-init.ps1 should NOT be copied to .bot/
-            Assert-PathNotExists -Name "-- kickstart-via-jira: profile-init.ps1 not copied" `
-                -Path (Join-Path $botDir4 "profile-init.ps1")
+            # on-install.ps1 should NOT be copied to .bot/
+            Assert-PathNotExists -Name "-- kickstart-via-jira: on-install.ps1 not copied" `
+                -Path (Join-Path $botDir4 "on-install.ps1")
 
             # Verify hook config merge: 03-research-completeness.ps1 present
             $verifyConfig4 = Join-Path $botDir4 "hooks\verify\config.json"
@@ -522,9 +522,9 @@ if (-not $dotbotInstalled) {
             Assert-PathExists -Name "-- kickstart-via-pr: settings.default.json present" `
                 -Path (Join-Path $botDirPr "defaults\settings.default.json")
 
-            # profile-init.ps1 should NOT be copied to .bot/
-            Assert-PathNotExists -Name "-- kickstart-via-pr: profile-init.ps1 not copied" `
-                -Path (Join-Path $botDirPr "profile-init.ps1")
+            # on-install.ps1 should NOT be copied to .bot/
+            Assert-PathNotExists -Name "-- kickstart-via-pr: on-install.ps1 not copied" `
+                -Path (Join-Path $botDirPr "on-install.ps1")
 
             # Settings validation
             $settingsPathPr = Join-Path $botDirPr "defaults\settings.default.json"

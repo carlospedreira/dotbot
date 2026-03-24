@@ -257,7 +257,6 @@ function Invoke-List {
             Write-Host ""
             foreach ($d in $wfDirs) {
                 $yamlPath = Join-Path $d.FullName "manifest.yaml"
-                if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $d.FullName "profile.yaml" }
                 if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $d.FullName "workflow.yaml" }
                 $desc = ""
                 if (Test-Path $yamlPath) {
@@ -281,7 +280,6 @@ function Invoke-List {
             Write-Host ""
             foreach ($d in $stDirs) {
                 $yamlPath = Join-Path $d.FullName "manifest.yaml"
-                if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $d.FullName "profile.yaml" }
                 $desc = ""; $extends = ""
                 if (Test-Path $yamlPath) {
                     Get-Content $yamlPath | ForEach-Object {

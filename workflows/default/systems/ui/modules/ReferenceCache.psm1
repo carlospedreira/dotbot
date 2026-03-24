@@ -333,6 +333,24 @@ function Get-FileWithReferences {
         }
     }
 
+    # Fallback: workflow-scoped types (e.g. "iwg-bs-scoring_age" → workflows/iwg-bs-scoring/prompts/agents)
+    if (-not $matchingDir -and $Type -match '_') {
+        $lastUnderscore = $Type.LastIndexOf('_')
+        $wfName = $Type.Substring(0, $lastUnderscore)
+        $subType = $Type.Substring($lastUnderscore + 1)
+        $wfPromptsDir = Join-Path $botRoot "workflows\$wfName\prompts"
+        if (Test-Path $wfPromptsDir) {
+            $wfDirs = Get-ChildItem -Path $wfPromptsDir -Directory
+            foreach ($dir in $wfDirs) {
+                $shortType = $dir.Name.Substring(0, [Math]::Min(3, $dir.Name.Length))
+                if ($shortType -eq $subType) {
+                    $matchingDir = "__wf__$wfName/$($dir.Name)"
+                    break
+                }
+            }
+        }
+    }
+
     if (-not $matchingDir) {
         return @{
             success = $false
@@ -340,7 +358,12 @@ function Get-FileWithReferences {
         }
     }
 
-    $targetDir = Join-Path $botRoot "prompts\$matchingDir"
+    # Resolve the actual filesystem path
+    if ($matchingDir -match '^__wf__(.+)/(.+)$') {
+        $targetDir = Join-Path $botRoot "workflows\$($Matches[1])\prompts\$($Matches[2])"
+    } else {
+        $targetDir = Join-Path $botRoot "prompts\$matchingDir"
+    }
     $filePath = Join-Path $targetDir $Filename
 
     if (-not (Test-Path -LiteralPath $filePath)) {

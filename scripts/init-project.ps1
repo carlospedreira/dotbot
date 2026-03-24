@@ -344,9 +344,8 @@ if ($Workflow) {
                 $relativePathKey = $relativePath -replace '\\', '/'
 
             # Skip metadata files
-                if ($relativePathKey -eq "profile-init.ps1") { return }
-                if ($relativePathKey -eq "profile.yaml") { return }
-                if ($relativePathKey -eq "manifest.yaml") { return }
+            if ($relativePathKey -eq "on-install.ps1") { return }
+            if ($relativePathKey -eq "manifest.yaml") { return }
 
                 # Remap legacy paths: systems/mcp/tools/* -> tools/*
                 if ($relativePathKey -match '^systems/mcp/tools/(.+)$') {
@@ -411,7 +410,7 @@ if ($Workflow) {
             }
 
             # Run init script if present in source
-            $wfInitScript = Join-Path $wfSourceDir "profile-init.ps1"
+            $wfInitScript = Join-Path $wfSourceDir "on-install.ps1"
             if (Test-Path $wfInitScript) {
                 Write-Status "Running $displayName init script"
                 & $wfInitScript
@@ -463,9 +462,7 @@ if ($Stack -and $Stack.Count -gt 0) {
 # --- Helper: parse a manifest.yaml (no external YAML module needed) ---
 function Read-ManifestYaml {
     param([string]$Dir)
-    # Try manifest.yaml first, fall back to legacy profile.yaml
     $yamlPath = Join-Path $Dir "manifest.yaml"
-    if (-not (Test-Path $yamlPath)) { $yamlPath = Join-Path $Dir "profile.yaml" }
     $meta = @{ name = (Split-Path $Dir -Leaf); description = ""; extends = $null }
     if (Test-Path $yamlPath) {
         Get-Content $yamlPath | ForEach-Object {
@@ -680,10 +677,12 @@ foreach ($entryName in $resolvedOrder) {
         $destDir = Split-Path $destPath -Parent
 
         # Skip metadata files (not copied to .bot/)
-        if ($relativePathKey -eq "profile-init.ps1") { return }
-        if ($relativePathKey -eq "profile.yaml") { return }
+        if ($relativePathKey -eq "on-install.ps1") { return }
         if ($relativePathKey -eq "manifest.yaml") { return }
         if ($relativePathKey -eq "workflow.yaml") { return }  # Preserve default manifest; installed workflows live in workflows/<name>/
+
+        # Skip workflow-scoped prompts (already installed to .bot/workflows/<name>/)
+        if ($isWorkflow -and $relativePathKey -match '^prompts/(agents|skills|includes)/') { return }
 
         # Handle config.json merging for hooks/verify
         if ($relativePathKey -eq "hooks/verify/config.json") {
@@ -780,7 +779,7 @@ foreach ($entryName in $resolvedOrder) {
     Write-Success "Installed ${entryType}: $entryName"
 
     # Run init script if present
-    $initScript = Join-Path $entryDir "profile-init.ps1"
+    $initScript = Join-Path $entryDir "on-install.ps1"
     if (Test-Path $initScript) {
         Write-Status "Running $entryName init script"
         & $initScript
