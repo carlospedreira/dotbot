@@ -5,7 +5,7 @@
 .DESCRIPTION
     Seeds a test project with a briefing file, runs the kickstart flow,
     and verifies product documents are created. Requires Claude credentials.
-    Uses Haiku model to minimize cost.
+    Uses Sonnet model because auto mode does not support Haiku.
 #>
 
 [CmdletBinding()]
@@ -143,8 +143,7 @@ try {
         Set-Location $projectDir
         if (Test-Path $themeModule) { Import-Module $themeModule -Force }
         Import-Module $module -Force
-        # Use Haiku for cheapest E2E test
-        Invoke-ClaudeStream -Prompt $prompt -Model "haiku" *>&1
+        Invoke-ClaudeStream -Prompt $prompt -Model "sonnet" *>&1
     } -ArgumentList $claudeModule, $themeModule, $kickstartPrompt, $testProject
 
     $job | Wait-Job -Timeout $timeoutSeconds | Out-Null

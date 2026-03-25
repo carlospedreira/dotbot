@@ -52,8 +52,7 @@ async function loadProviderData() {
         // Fallback to Claude defaults if API fails
         const fallback = [
             { id: 'Opus', name: 'Opus', badge: 'Recommended', description: 'Most capable model' },
-            { id: 'Sonnet', name: 'Sonnet', badge: null, description: 'Balanced performance' },
-            { id: 'Haiku', name: 'Haiku', badge: null, description: 'Lightweight and fast' }
+            { id: 'Sonnet', name: 'Sonnet', badge: null, description: 'Balanced performance' }
         ];
         ANALYSIS_MODEL_OPTIONS = fallback;
         EXECUTION_MODEL_OPTIONS = fallback;

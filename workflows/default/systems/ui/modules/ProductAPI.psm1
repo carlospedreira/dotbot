@@ -400,6 +400,10 @@ function Start-ProductAnalyse {
     )
     $botRoot = $script:Config.BotRoot
 
+    if ($Model -eq 'Haiku') {
+        $Model = 'Sonnet'
+    }
+
     # Analyse is now a conditional task in the default workflow.
     # Launch the standard kickstart pipeline — the condition system
     # will activate the "Analyse Project" task and skip "Product Documents".
@@ -893,4 +897,3 @@ Export-ModuleMember -Function @(
     'Get-KickstartStatus',
     'Resume-ProductKickstart'
 )
-

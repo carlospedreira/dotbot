@@ -166,6 +166,21 @@ if (Test-Path $uiSettingsPath) {
 # Load provider config
 $providerConfig = Get-ProviderConfig
 
+if ($providerConfig.name -eq 'claude') {
+    if ($settings.analysis?.model -eq 'Haiku') {
+        Write-Warning "Claude Haiku is no longer supported with auto mode. Remapping analysis model 'Haiku' to 'Sonnet'."
+        $settings.analysis.model = 'Sonnet'
+    }
+    if ($settings.execution?.model -eq 'Haiku') {
+        Write-Warning "Claude Haiku is no longer supported with auto mode. Remapping execution model 'Haiku' to 'Sonnet'."
+        $settings.execution.model = 'Sonnet'
+    }
+    if ($Model -eq 'Haiku') {
+        Write-Warning "Claude Haiku is no longer supported with auto mode. Remapping requested model 'Haiku' to 'Sonnet'."
+        $Model = 'Sonnet'
+    }
+}
+
 # Resolve model (parameter > settings > provider default)
 if (-not $Model) {
     $Model = switch ($Type) {

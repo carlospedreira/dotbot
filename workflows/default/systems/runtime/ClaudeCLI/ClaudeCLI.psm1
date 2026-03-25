@@ -1254,11 +1254,6 @@ function Get-ClaudeModels {
         Description = "Balanced performance"
         Alias = "sonnet"
     }
-    [PSCustomObject]@{
-        Name = "haiku"
-        Description = "Lightweight and fast"
-        Alias = "haiku"
-    }
 }
 
 function New-ClaudeSession {

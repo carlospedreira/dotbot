@@ -6,8 +6,7 @@
   "prompt_flag": null,
   "models": {
     "Opus":   { "id": "opus",   "description": "Most capable model for complex reasoning", "badge": "Recommended" },
-    "Sonnet": { "id": "sonnet", "description": "Balanced performance with faster response" },
-    "Haiku":  { "id": "haiku",  "description": "Lightweight and fast for simple tasks" }
+    "Sonnet": { "id": "sonnet", "description": "Balanced performance with faster response" }
   },
   "default_model": "Opus",
   "cli_args": {

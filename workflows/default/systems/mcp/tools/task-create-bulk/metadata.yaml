@@ -77,7 +77,7 @@ inputSchema:
             description: Working directory for task execution (relative to project root)
           model:
             type: string
-            description: "Model alias override for this task (e.g. Sonnet, Opus, Haiku)"
+            description: "Model alias override for this task (e.g. Sonnet, Opus)"
           type:
             type: string
             description: "Task type: prompt (default), prompt_template, script, mcp, task_gen"
