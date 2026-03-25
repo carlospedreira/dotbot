@@ -1193,7 +1193,7 @@ function Invoke-Claude {
     Optional session ID for conversation continuity.
     
     .PARAMETER NoPermissions
-    Start Claude in auto permission mode.
+    Skip permission checks (default: enabled).
     
     .EXAMPLE
     Invoke-Claude -Prompt "What is 2+2?"
