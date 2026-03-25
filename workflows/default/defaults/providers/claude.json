@@ -12,7 +12,7 @@
   "default_model": "Opus",
   "cli_args": {
     "model": "--model",
-    "permissions_bypass": "--dangerously-skip-permissions",
+    "permissions_bypass": "--enable-auto-mode",
     "stream_format": ["--output-format", "stream-json"],
     "print": "--print",
     "verbose": "--verbose",

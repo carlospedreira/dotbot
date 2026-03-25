@@ -19,7 +19,7 @@ Validate that the three provider config JSON files are correct, complete, and in
 - [ ] Every model entry has `id` and `description`
 
 ### CLI Args Accuracy
-- [ ] Claude: verify `--model`, `--dangerously-skip-permissions`, `--output-format stream-json`, `--print`, `--verbose`, `--session-id`, `--no-session-persistence` match actual Claude CLI help (`claude --help`)
+- [ ] Claude: verify `--model`, `--enable-auto-mode`, `--output-format stream-json`, `--print`, `--verbose`, `--session-id`, `--no-session-persistence` match actual Claude CLI help (`claude --help`)
 - [ ] Codex: verify `-m`, `--dangerously-bypass-approvals-and-sandbox`, `--json`, exec subcommand match actual Codex CLI help (`codex exec --help`)
 - [ ] Gemini: verify `-m`, `-y`, `--output-format stream-json`, `-p` prompt flag match actual Gemini CLI help (`gemini --help`)
 

@@ -30,7 +30,7 @@ Validate that `ProviderCLI.psm1` loads correctly, all exported functions work, a
 - [ ] Throws on invalid alias for provider (e.g. "Opus" for codex)
 
 ### Build-ProviderCliArgs
-- [ ] Claude args include: `--model`, `--dangerously-skip-permissions`, `--output-format stream-json`, `--print`, `--verbose`, `-- <prompt>`
+- [ ] Claude args include: `--model`, `--enable-auto-mode`, `--output-format stream-json`, `--print`, `--verbose`, `-- <prompt>`
 - [ ] Codex args include: `exec`, `-m`, `--dangerously-bypass-approvals-and-sandbox`, `--json`, `-- <prompt>`
 - [ ] Gemini args include: `-m`, `-y`, `--output-format stream-json`, `-p <prompt>`
 - [ ] Session ID prepended for Claude, omitted for Codex/Gemini
