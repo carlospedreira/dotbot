@@ -257,7 +257,11 @@ function Send-TaskNotification {
         $instanceReq.recipients.emails = $recipientEmails
     }
     if ($recipientIds.Count -gt 0) {
-        $instanceReq.recipients.userObjectIds = $recipientIds
+        if ($channel -eq "slack") {
+            $instanceReq.recipients.slackUserIds = $recipientIds
+        } else {
+            $instanceReq.recipients.userObjectIds = $recipientIds
+        }
     }
 
     try {
