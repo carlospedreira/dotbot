@@ -44,7 +44,7 @@ function Get-NotificationSettings {
     }
 
     # Read settings.default.json
-    $defaultsFile = Join-Path $BotRoot "defaults\settings.default.json"
+    $defaultsFile = Join-Path $BotRoot "settings\settings.default.json"
     $overridesFile = Join-Path $BotRoot ".control\settings.json"
 
     $merged = @{}
@@ -69,7 +69,7 @@ function Get-NotificationSettings {
                     }
                 }
             }
-        } catch { Write-Verbose "Settings operation failed: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Settings operation failed" -Exception $_ }
     }
 
     # Layer: user overrides (gitignored)
@@ -91,7 +91,7 @@ function Get-NotificationSettings {
                     }
                 }
             }
-        } catch { Write-Verbose "Non-critical operation failed: $_" }
+        } catch { Write-BotLog -Level Debug -Message "Non-critical operation failed" -Exception $_ }
     }
 
     return [PSCustomObject]$merged
@@ -202,7 +202,7 @@ function Send-TaskNotification {
     $guidBytes[6] = ($guidBytes[6] -band 0x0F) -bor 0x50
     # Set RFC 4122 variant (10xx) in the high bits of byte 8
     $guidBytes[8] = ($guidBytes[8] -band 0x3F) -bor 0x80
-    $questionId = (New-Object System.Guid ($guidBytes)).ToString()
+    $questionId = ([System.Guid]::new([byte[]]$guidBytes)).ToString()
 
     # ── Step 1: Publish template ──────────────────────────────────────────
     $templateOptions = @(foreach ($opt in $PendingQuestion.options) {
@@ -257,7 +257,11 @@ function Send-TaskNotification {
         $instanceReq.recipients.emails = $recipientEmails
     }
     if ($recipientIds.Count -gt 0) {
-        $instanceReq.recipients.userObjectIds = $recipientIds
+        if ($channel -eq "slack") {
+            $instanceReq.recipients.slackUserIds = $recipientIds
+        } else {
+            $instanceReq.recipients.userObjectIds = $recipientIds
+        }
     }
 
     try {

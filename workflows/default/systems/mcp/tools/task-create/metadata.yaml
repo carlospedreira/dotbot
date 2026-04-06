@@ -47,6 +47,11 @@ inputSchema:
       description: List of agent persona file paths to read before implementing (e.g., .bot/agents/backend-developer.md)
       items:
         type: string
+    applicable_skills:
+      type: array
+      description: List of skill file paths to apply during implementation (e.g., .bot/recipes/skills/write-unit-tests/SKILL.md)
+      items:
+        type: string
     applicable_decisions:
       type: array
       description: List of Decision IDs that constrain this task (e.g., ["dec-a1b2c3d4", "dec-e5f6a7b8"])
@@ -72,7 +77,7 @@ inputSchema:
       default: prompt
     prompt:
       type: string
-      description: "Path to prompt template file (relative to workflow dir). Used with prompt_template type. E.g. prompts/workflows/03-score-tickets.md"
+      description: "Path to prompt template file (relative to workflow dir). Used with prompt_template type. E.g. recipes/prompts/03-score-tickets.md"
     script_path:
       type: string
       description: "Path to .ps1 script (relative to .bot/). Required for script and task_gen types."

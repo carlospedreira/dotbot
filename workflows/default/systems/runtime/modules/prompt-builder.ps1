@@ -86,7 +86,7 @@ function Build-TaskPrompt {
     if ($Task.applicable_standards -and $Task.applicable_standards.Count -gt 0) {
         $applicableStandards = ($Task.applicable_standards | ForEach-Object { "- $_" }) -join "`n"
     } else {
-        $applicableStandards = "No specific standards listed for this task - use global standards from .bot/prompts/standards/global/"
+        $applicableStandards = "No specific standards listed for this task - use global standards from .bot/recipes/standards/global/"
     }
     $prompt = $prompt -replace '\{\{APPLICABLE_STANDARDS\}\}', $applicableStandards
 
@@ -95,9 +95,18 @@ function Build-TaskPrompt {
     if ($Task.applicable_agents -and $Task.applicable_agents.Count -gt 0) {
         $applicableAgents = ($Task.applicable_agents | ForEach-Object { "- $_" }) -join "`n"
     } else {
-        $applicableAgents = "Use .bot/prompts/agents/implementer/AGENT.md as your default persona"
+        $applicableAgents = "Use .bot/recipes/agents/implementer/AGENT.md as your default persona"
     }
     $prompt = $prompt -replace '\{\{APPLICABLE_AGENTS\}\}', $applicableAgents
+
+    # Format and replace applicable skills
+    $applicableSkills = ""
+    if ($Task.applicable_skills -and $Task.applicable_skills.Count -gt 0) {
+        $applicableSkills = ($Task.applicable_skills | ForEach-Object { "- $_" }) -join "`n"
+    } else {
+        $applicableSkills = "No specific skills listed — use judgement based on task category"
+    }
+    $prompt = $prompt -replace '\{\{APPLICABLE_SKILLS\}\}', $applicableSkills
 
     # Format and replace acceptance criteria
     $acceptanceCriteria = if ($Task.acceptance_criteria) {
