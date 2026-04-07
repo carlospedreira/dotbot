@@ -313,8 +313,9 @@ function renderQuestionItem(item) {
                 
                 <div class="answer-options" data-multi-select="${isMultiSelect}">
                     ${options.map(opt => `
-                        <div class="answer-option" 
-                             data-key="${escapeHtml(opt.key)}">
+                        <div class="answer-option"
+                             data-key="${escapeHtml(opt.key)}"
+                             data-label="${escapeHtml(opt.label)}">
                             <span class="answer-key">${escapeHtml(opt.key)}</span>
                             <div class="answer-content">
                                 <div class="answer-label">${escapeHtml(opt.label)}</div>
@@ -413,6 +414,7 @@ function renderKickstartQuestionsItem(item) {
                             ${(q.options || []).map(opt => `
                                 <div class="answer-option"
                                      data-key="${escapeHtml(opt.key)}"
+                                     data-label="${escapeHtml(opt.label)}"
                                      data-question-key="${escapeHtml(q.id)}">
                                     <span class="answer-key">${escapeHtml(opt.key)}</span>
                                     <div class="answer-content">
@@ -464,6 +466,8 @@ function attachActionHandlers(container) {
             const isMultiSelect = optionsContainer?.dataset.multiSelect === 'true';
             const taskId = option.closest('.action-item')?.dataset.taskId;
             const key = option.dataset.key;
+            const label = option.dataset.label;
+            const value = label ? `${key}: ${label}` : key;
 
             if (!taskId) return;
 
@@ -472,11 +476,11 @@ function attachActionHandlers(container) {
                 option.classList.toggle('selected');
                 if (option.classList.contains('selected')) {
                     if (!selectedAnswers[taskId]) selectedAnswers[taskId] = [];
-                    if (!selectedAnswers[taskId].includes(key)) {
-                        selectedAnswers[taskId].push(key);
+                    if (!selectedAnswers[taskId].includes(value)) {
+                        selectedAnswers[taskId].push(value);
                     }
                 } else {
-                    selectedAnswers[taskId] = selectedAnswers[taskId].filter(k => k !== key);
+                    selectedAnswers[taskId] = selectedAnswers[taskId].filter(v => v !== value);
                 }
             } else {
                 // Single select - clear others
@@ -484,7 +488,7 @@ function attachActionHandlers(container) {
                     opt.classList.remove('selected');
                 });
                 option.classList.add('selected');
-                selectedAnswers[taskId] = [key];
+                selectedAnswers[taskId] = [value];
             }
         });
     });

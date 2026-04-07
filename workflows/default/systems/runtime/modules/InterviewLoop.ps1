@@ -44,7 +44,8 @@ function Invoke-InterviewLoop {
     $interviewRound = 0
     $allQandA = @()
     $questionsPath = Join-Path $ProductDir "clarification-questions.json"
-    $summaryPath = Join-Path $ProductDir "interview-summary.md"
+    $answersPath   = Join-Path $ProductDir "clarification-answers.json"
+    $summaryPath   = Join-Path $ProductDir "interview-summary.md"
 
     # Use Opus for interview quality
     $interviewModel = Resolve-ProviderModelId -ModelAlias 'Opus'
@@ -63,10 +64,6 @@ function Invoke-InterviewLoop {
                 }
             }
         }
-
-        # Clean up any previous round's files
-        if (Test-Path $questionsPath) { Remove-Item $questionsPath -Force }
-        if (Test-Path $summaryPath) { Remove-Item $summaryPath -Force }
 
         $interviewPrompt = @"
 $interviewWorkflow
@@ -112,6 +109,10 @@ Review all context above. Decide whether to write clarification-questions.json (
                 generator = "dotbot-kickstart"
             }
             Add-YamlFrontMatter -FilePath $summaryPath -Metadata $meta
+
+            # Clean up any leftover question/answer files now that the interview is fully analysed
+            Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
+            Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
 
             break
         }
@@ -254,9 +255,10 @@ Review all context above. Decide whether to write clarification-questions.json (
             Write-Status "Answers received for round $interviewRound" -Type Success
             Write-ProcessActivity -Id $ProcessId -ActivityType "text" -Message "Received answers for round $interviewRound"
 
-            # Clean up for next iteration
-            Remove-Item $questionsPath -Force -ErrorAction SilentlyContinue
-            Remove-Item $answersPath -Force -ErrorAction SilentlyContinue
+            # Keep clarification-questions.json and clarification-answers.json intact so
+            # Claude can read them in the next round when it processes the answers.
+            # They will be overwritten (questions) or pre-cleared (answers, line below)
+            # naturally when the next round begins.
 
             # Reset process status
             $processData.status = 'running'
