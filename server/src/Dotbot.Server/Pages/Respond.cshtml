@@ -148,13 +148,11 @@
                     if (resp.redirected) {
                         window.location.href = resp.url;
                     } else if (resp.ok) {
-                        // Server returned the page (validation error) — replace DOM
+                        // Server returned the page (validation error) — full page replace to re-run scripts
                         const html = await resp.text();
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(html, 'text/html');
-                        const newCard = doc.querySelector('.card');
-                        if (newCard) document.querySelector('.card').replaceWith(newCard);
-                        if (btn) { btn.disabled = false; btn.textContent = 'Submit Response'; }
+                        document.open();
+                        document.write(html);
+                        document.close();
                     } else {
                         if (btn) { btn.disabled = false; btn.textContent = 'Submit Response'; }
                         alert('Submission failed (' + resp.status + '). Please try again.');

@@ -678,7 +678,7 @@ function handleAnswerFiles(taskId, fileList, section) {
     for (const file of Array.from(fileList)) {
         const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
         if (!ANSWER_ALLOWED_EXTENSIONS.includes(ext)) {
-            showToast(`"${file.name}" is not allowed. Use .md, .docx, .xlsx, or .pdf`, 'warning');
+            showToast(`"${file.name}" is not allowed. Use one of: ${ANSWER_ALLOWED_EXTENSIONS.join(', ')}`, 'warning');
             continue;
         }
         if (file.size > ANSWER_MAX_FILE_SIZE) {
@@ -715,9 +715,12 @@ function updateAnswerFileList(taskId, section) {
             <span class="answer-file-icon">&#9671;</span>
             <span class="answer-file-name">${escapeHtml(file.name)}</span>
             <span class="answer-file-size">${sizeStr}</span>
-            <button class="answer-file-remove" onclick="removeAnswerFile(${escapeHtml(String(idx))}, '${escapeHtml(taskId)}')" title="Remove">&times;</button>
+            <button class="answer-file-remove" data-idx="${idx}" data-task-id="${escapeHtml(taskId)}" title="Remove">&times;</button>
         </div>`;
     }).join('');
+    container.querySelectorAll('.answer-file-remove').forEach(btn => {
+        btn.addEventListener('click', () => removeAnswerFile(Number(btn.dataset.idx), btn.dataset.taskId));
+    });
 }
 
 function handleKickstartFiles(processId, questionId, fileList, section) {
@@ -727,7 +730,7 @@ function handleKickstartFiles(processId, questionId, fileList, section) {
     for (const file of Array.from(fileList)) {
         const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
         if (!ANSWER_ALLOWED_EXTENSIONS.includes(ext)) {
-            showToast(`"${file.name}" is not allowed. Use .md, .docx, .xlsx, or .pdf`, 'warning');
+            showToast(`"${file.name}" is not allowed. Use one of: ${ANSWER_ALLOWED_EXTENSIONS.join(', ')}`, 'warning');
             continue;
         }
         if (file.size > ANSWER_MAX_FILE_SIZE) {
@@ -761,9 +764,12 @@ function updateKickstartFileList(key, section) {
             <span class="answer-file-icon">&#9671;</span>
             <span class="answer-file-name">${escapeHtml(file.name)}</span>
             <span class="answer-file-size">${sizeStr}</span>
-            <button class="answer-file-remove" onclick="removeKickstartQuestionFile(${idx}, '${escapeHtml(key)}')" title="Remove">&times;</button>
+            <button class="answer-file-remove" data-idx="${idx}" data-key="${escapeHtml(key)}" title="Remove">&times;</button>
         </div>`;
     }).join('');
+    container.querySelectorAll('.answer-file-remove').forEach(btn => {
+        btn.addEventListener('click', () => removeKickstartQuestionFile(Number(btn.dataset.idx), btn.dataset.key));
+    });
 }
 
 window.removeKickstartQuestionFile = function(index, key) {

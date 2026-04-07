@@ -8,7 +8,7 @@ using System.IdentityModel.Tokens.Jwt;
 namespace Dotbot.Server.Pages;
 
 [IgnoreAntiforgeryToken]
-[RequestSizeLimit(20 * 1024 * 1024)]
+[RequestSizeLimit(35 * 1024 * 1024)]
 public class RespondModel : PageModel
 {
     private static readonly string[] AllowedExtensions = [".md", ".docx", ".xlsx", ".pdf", ".txt"];
@@ -178,8 +178,10 @@ public class RespondModel : PageModel
                     continue;
                 }
 
+                var safeFileName = Path.GetFileName(file.FileName);
+                if (string.IsNullOrWhiteSpace(safeFileName)) continue;
                 using var stream = file.OpenReadStream();
-                var record = await _attachments.SaveAsync(responseId, file.FileName, stream, file.Length);
+                var record = await _attachments.SaveAsync(responseId, safeFileName, stream, file.Length);
                 savedAttachments.Add(record);
                 _logger.LogInformation("Attachment saved: {BlobPath} ({Size} bytes)", record.BlobPath, record.SizeBytes);
             }
