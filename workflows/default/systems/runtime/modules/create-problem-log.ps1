@@ -100,13 +100,6 @@ function New-ProblemLog {
     # Write to file
     $logObject | ConvertTo-Json -Depth 10 | Set-Content -Path $filename -Encoding UTF8
     
-    # Import theme if available
-    $themeModulePath = Join-Path $PSScriptRoot "DotBotTheme.psm1"
-    if (Test-Path $themeModulePath) {
-        Import-Module $themeModulePath -Force
-        Write-BotLog -Level Info -Message "Problem log created: $filename"
-    } else {
-        Write-BotLog -Level Info -Message "Problem log created: $filename"
-    }
+    Write-BotLog -Level Info -Message "Problem log created: $filename"
     return $filename
 }
