@@ -843,8 +843,6 @@ function Resume-ProductKickstart {
             return @{ _statusCode = 400; success = $false; error = "Cannot resume — no saved prompt or mission document found. Please start a new kickstart." }
         }
     }
-    $originalPrompt = Get-Content -LiteralPath $promptFile -Raw
-
     # Launch resumed kickstart
     $launcherPath = Join-Path $botRoot "systems\runtime\launch-process.ps1"
     $resumePhase = $status.resume_from
@@ -896,4 +894,3 @@ Export-ModuleMember -Function @(
     'Get-KickstartStatus',
     'Resume-ProductKickstart'
 )
-

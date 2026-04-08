@@ -104,7 +104,6 @@ function New-ProblemLog {
     $themeModulePath = Join-Path $PSScriptRoot "DotBotTheme.psm1"
     if (Test-Path $themeModulePath) {
         Import-Module $themeModulePath -Force
-        $t = Get-DotBotTheme
         Write-BotLog -Level Info -Message "Problem log created: $filename"
     } else {
         Write-BotLog -Level Info -Message "Problem log created: $filename"
