@@ -1255,7 +1255,7 @@ function Invoke-Claude {
         $cliArgs += "--session-id", $SessionId
     }
 
-    & claude.exe @cliArgs
+    & claude @cliArgs
 }
 
 function Get-ClaudeModels {

@@ -1031,6 +1031,63 @@ if (Test-Path $workflowsDefault) {
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# CROSS-PLATFORM HYGIENE
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  CROSS-PLATFORM HYGIENE" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+if (Test-Path $workflowsDefault) {
+    # Windows-only patterns that must not appear outside of $IsWindows guards
+    $windowsOnlyPatterns = @(
+        @{ Pattern = '\$env:USERPROFILE\b';                          Name = '$env:USERPROFILE (use $HOME)' }
+        @{ Pattern = '\$env:APPDATA\b';                              Name = '$env:APPDATA (use cross-platform path)' }
+        @{ Pattern = '\$env:TEMP\b|\$env:TMP\b';                    Name = '$env:TEMP/$env:TMP (use [IO.Path]::GetTempPath())' }
+        @{ Pattern = '\$env:COMPUTERNAME\b';                         Name = '$env:COMPUTERNAME (use [Net.Dns]::GetHostName())' }
+        @{ Pattern = '\$env:USERDOMAIN\b';                           Name = '$env:USERDOMAIN (use [Environment]::UserDomainName)' }
+        @{ Pattern = 'WindowsIdentity\]::GetCurrent\(\)';            Name = '[WindowsIdentity]::GetCurrent() without platform guard' }
+        @{ Pattern = 'Get-NetIPAddress\b';                           Name = 'Get-NetIPAddress (not available on Linux)' }
+        @{ Pattern = 'Get-WmiObject\b';                              Name = 'Get-WmiObject (use Get-CimInstance with platform guard)' }
+        @{ Pattern = '"pwsh\.exe"';                                  Name = '"pwsh.exe" (use "pwsh" for cross-platform)' }
+        @{ Pattern = '& claude\.exe\b';                              Name = '"& claude.exe" (use "& claude" for cross-platform)' }
+    )
+
+    $cpViolations = @()
+    Get-ChildItem -Path $workflowsDefault -Recurse -Include *.ps1, *.psm1 | ForEach-Object {
+        $relativePath = $_.FullName.Substring($workflowsDefault.Length + 1).Replace('\', '/')
+        $lines = Get-Content $_.FullName
+        for ($lineNum = 0; $lineNum -lt $lines.Count; $lineNum++) {
+            $line = $lines[$lineNum]
+            # Skip comment-only lines
+            if ($line.TrimStart() -match '^\s*#') { continue }
+            # Skip lines that are part of an $IsWindows guard — check the current line and
+            # up to 5 lines above to catch patterns inside if ($IsWindows) { ... } blocks.
+            $windowStart = [Math]::Max(0, $lineNum - 5)
+            $contextWindow = $lines[$windowStart..$lineNum] -join ' '
+            if ($contextWindow -match '\$IsWindows') { continue }
+            foreach ($wp in $windowsOnlyPatterns) {
+                if ($line -match $wp.Pattern) {
+                    $cpViolations += "$relativePath`:$($lineNum + 1) uses $($wp.Name)"
+                }
+            }
+        }
+    }
+
+    if ($cpViolations.Count -eq 0) {
+        Write-TestResult -Name "No Windows-only APIs in workflows/default (outside platform guards)" -Status Pass
+    } else {
+        $sample = ($cpViolations | Select-Object -First 15) -join "`n  "
+        $extra = if ($cpViolations.Count -gt 15) { "`n  ... and $($cpViolations.Count - 15) more" } else { "" }
+        Write-TestResult -Name "No Windows-only APIs in workflows/default (outside platform guards)" -Status Fail `
+            -Message "Found $($cpViolations.Count) violation(s):`n  $sample$extra"
+    }
+} else {
+    Write-TestResult -Name "Cross-platform hygiene" -Status Skip -Message "workflows/default not found"
+}
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # STUDIO NAMING HYGIENE
 # ═══════════════════════════════════════════════════════════════════
 

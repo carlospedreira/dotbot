@@ -120,9 +120,20 @@ ST: urn:schemas-upnp-org:device:basic:1
 
     # Method 3: Subnet scan on port 443 — new bridges disable SSDP
     try {
-        $localIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
-            $_.InterfaceAlias -notmatch "Loopback" -and $_.PrefixOrigin -eq "Dhcp"
-        } | Select-Object -First 1).IPAddress
+        # Use a UDP socket to let the OS pick the outbound interface — works cross-platform,
+        # avoids Docker/VPN/loopback, and requires no actual network traffic.
+        $localIp = $null
+        $udpSocket = [System.Net.Sockets.Socket]::new(
+            [System.Net.Sockets.AddressFamily]::InterNetwork,
+            [System.Net.Sockets.SocketType]::Dgram,
+            [System.Net.Sockets.ProtocolType]::Udp
+        )
+        try {
+            $udpSocket.Connect('8.8.8.8', 80)
+            $localIp = ($udpSocket.LocalEndPoint -as [System.Net.IPEndPoint]).Address.ToString()
+        } finally {
+            $udpSocket.Dispose()
+        }
 
         if ($localIp -match "(\d+\.\d+\.\d+)\.\d+") {
             $subnet = $matches[1]
