@@ -14,6 +14,40 @@ $script:Config = @{
     ControlDir = $null
 }
 
+$script:ConsoleSequencePattern = "(\x1B\[[0-9;?]*[ -/]*[@-~])|(\[[0-9;?]*[ -/]*[@-~])"
+
+function Remove-ConsoleSequences {
+    param(
+        [AllowNull()]
+        [object]$Text
+    )
+
+    if ($null -eq $Text) {
+        return $null
+    }
+
+    $clean = [regex]::Replace([string]$Text, $script:ConsoleSequencePattern, "")
+    return $clean.Trim()
+}
+
+function Sanitize-ProcessDisplayFields {
+    param(
+        [Parameter(Mandatory)]
+        [object]$Process
+    )
+
+    if ($Process.PSObject.Properties['heartbeat_status']) {
+        $Process.heartbeat_status = Remove-ConsoleSequences $Process.heartbeat_status
+    }
+
+    if ($Process.PSObject.Properties['heartbeat_next_action']) {
+        $cleanNextAction = Remove-ConsoleSequences $Process.heartbeat_next_action
+        $Process.heartbeat_next_action = if ([string]::IsNullOrWhiteSpace($cleanNextAction)) { $null } else { $cleanNextAction }
+    }
+
+    return $Process
+}
+
 function Initialize-ProcessAPI {
     param(
         [Parameter(Mandatory)] [string]$ProcessesDir,
@@ -72,7 +106,7 @@ function Get-ProcessList {
                 }
             }
 
-            $processList += $proc
+            $processList += (Sanitize-ProcessDisplayFields -Process $proc)
         } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
     }
 
@@ -275,7 +309,7 @@ function Get-ProcessDetail {
 
     $procFile = Join-Path $processesDir "$ProcessId.json"
     if (Test-Path $procFile) {
-        return Get-Content $procFile -Raw | ConvertFrom-Json
+        return Sanitize-ProcessDisplayFields -Process (Get-Content $procFile -Raw | ConvertFrom-Json)
     } else {
         return @{ _statusCode = 404; error = "Process not found: $ProcessId" }
     }

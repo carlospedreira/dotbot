@@ -1764,7 +1764,9 @@ function updateSteeringStatus(instances) {
         textEl.textContent = `${selectedInstance} not running`;
         textEl.className = 'steering-text muted';
     } else if (inst.status) {
-        textEl.textContent = inst.status + (inst.next_action ? `\n→ ${inst.next_action}` : '');
+        const statusText = stripConsoleSequences(inst.status);
+        const nextActionText = stripConsoleSequences(inst.next_action);
+        textEl.textContent = statusText + (nextActionText ? `\n→ ${nextActionText}` : '');
         textEl.className = 'steering-text';
     } else {
         textEl.textContent = 'Awaiting heartbeat...';

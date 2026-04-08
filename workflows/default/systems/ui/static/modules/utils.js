@@ -32,6 +32,20 @@ function escapeAttr(text) {
 }
 
 /**
+ * Remove ANSI/control-sequence fragments from text before rendering.
+ * Handles both real ESC-prefixed sequences and orphaned CSI fragments.
+ * @param {string} text - Text to clean
+ * @returns {string} Cleaned text
+ */
+function stripConsoleSequences(text) {
+    if (text == null) return '';
+    return String(text)
+        .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+        .replace(/\[[0-9;?]*[ -/]*[@-~]/g, '')
+        .trim();
+}
+
+/**
  * Validate that a string matches the expected decision ID pattern (dec-XXXXXXXX).
  * Use before passing IDs into DOM operations or API calls.
  * @param {string} id - Value to validate

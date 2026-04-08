@@ -15,6 +15,40 @@ $script:Config = @{
     ProcessesDir = $null
 }
 
+$script:ConsoleSequencePattern = "(\x1B\[[0-9;?]*[ -/]*[@-~])|(\[[0-9;?]*[ -/]*[@-~])"
+
+function Remove-ConsoleSequences {
+    param(
+        [AllowNull()]
+        [object]$Text
+    )
+
+    if ($null -eq $Text) {
+        return $null
+    }
+
+    $clean = [regex]::Replace([string]$Text, $script:ConsoleSequencePattern, "")
+    return $clean.Trim()
+}
+
+function Sanitize-ProcessHeartbeatFields {
+    param(
+        [Parameter(Mandatory)]
+        [object]$Process
+    )
+
+    if ($Process.PSObject.Properties['heartbeat_status']) {
+        $Process.heartbeat_status = Remove-ConsoleSequences $Process.heartbeat_status
+    }
+
+    if ($Process.PSObject.Properties['heartbeat_next_action']) {
+        $cleanNextAction = Remove-ConsoleSequences $Process.heartbeat_next_action
+        $Process.heartbeat_next_action = if ([string]::IsNullOrWhiteSpace($cleanNextAction)) { $null } else { $cleanNextAction }
+    }
+
+    return $Process
+}
+
 function Initialize-StateBuilder {
     param(
         [Parameter(Mandatory)] [string]$BotRoot,
@@ -525,6 +559,7 @@ function Get-BotState {
         foreach ($pf in $procFiles) {
             try {
                 $proc = Get-Content $pf.FullName -Raw | ConvertFrom-Json
+                $proc = Sanitize-ProcessHeartbeatFields -Process $proc
 
                 # Count processes waiting for interview answers
                 if ($proc.status -eq 'needs-input' -and $proc.pending_questions) {

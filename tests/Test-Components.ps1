@@ -188,6 +188,106 @@ if (Test-Path $extractCommitInfoScript) {
 
 Write-Host ""
 
+# PROCESS STATUS SANITIZATION
+# ═══════════════════════════════════════════════════════════════════
+
+Write-Host "  PROCESS STATUS SANITIZATION" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+$fileWatcherModule = Join-Path $botDir "systems\ui\modules\FileWatcher.psm1"
+$processApiModule = Join-Path $botDir "systems\ui\modules\ProcessAPI.psm1"
+$stateBuilderModule = Join-Path $botDir "systems\ui\modules\StateBuilder.psm1"
+$steeringHeartbeatScript = Join-Path $botDir "systems\mcp\tools\steering-heartbeat\script.ps1"
+$dotBotLogModule = Join-Path $botDir "systems\runtime\modules\DotBotLog.psm1"
+$testControlDir = Join-Path $botDir ".control"
+$testProcessesDir = Join-Path $testControlDir "processes"
+$testLogsDir = Join-Path $testControlDir "logs"
+
+if ((Test-Path $fileWatcherModule) -and (Test-Path $processApiModule) -and (Test-Path $stateBuilderModule) -and (Test-Path $steeringHeartbeatScript) -and (Test-Path $dotBotLogModule)) {
+    Import-Module $dotBotLogModule -Force
+    Import-Module $fileWatcherModule -Force
+    Import-Module $processApiModule -Force
+    Import-Module $stateBuilderModule -Force
+    $global:DotbotProjectRoot = $testProject
+    . $steeringHeartbeatScript
+
+    if (-not (Test-Path $testLogsDir)) {
+        New-Item -Path $testLogsDir -ItemType Directory -Force | Out-Null
+    }
+    if (-not (Test-Path $testProcessesDir)) {
+        New-Item -Path $testProcessesDir -ItemType Directory -Force | Out-Null
+    }
+    Initialize-DotBotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testProject
+    Initialize-FileWatchers -BotRoot $botDir
+    Initialize-ProcessAPI -ProcessesDir $testProcessesDir -BotRoot $botDir -ControlDir $testControlDir
+    Initialize-StateBuilder -BotRoot $botDir -ControlDir $testControlDir -ProcessesDir $testProcessesDir
+
+    $testProcId = "proc-ansi-sanitize"
+    $testProcFile = Join-Path $testProcessesDir "$testProcId.json"
+    $esc = [char]27
+
+    try {
+        @{
+            id = $testProcId
+            type = "execution"
+            status = "running"
+            pid = $PID
+            started_at = (Get-Date).ToUniversalTime().ToString("o")
+            last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
+            last_whisper_index = 0
+            heartbeat_status = $null
+            heartbeat_next_action = $null
+        } | ConvertTo-Json -Depth 10 | Set-Content -Path $testProcFile -Encoding utf8NoBOM
+
+        $heartbeatResult = Invoke-SteeringHeartbeat -Arguments @{
+            session_id = "test-session-ansi"
+            process_id = $testProcId
+            status = "${esc}[38;2;56;52;44mIdle${esc}[0m"
+            next_action = "${esc}[38;2;112;104;92mWait${esc}[0m"
+        }
+
+        Assert-True -Name "steering_heartbeat accepts ANSI-bearing status text" `
+            -Condition ($heartbeatResult.success -eq $true) `
+            -Message "Expected heartbeat tool to succeed"
+
+        $storedProc = Get-Content $testProcFile -Raw | ConvertFrom-Json
+        Assert-Equal -Name "steering_heartbeat strips ANSI from stored heartbeat_status" `
+            -Expected "Idle" `
+            -Actual $storedProc.heartbeat_status
+        Assert-Equal -Name "steering_heartbeat strips ANSI from stored heartbeat_next_action" `
+            -Expected "Wait" `
+            -Actual $storedProc.heartbeat_next_action
+
+        $storedProc.heartbeat_status = "[38;2;56;52;44mIdle[0m"
+        $storedProc.heartbeat_next_action = "[38;2;112;104;92mWait[0m"
+        $storedProc | ConvertTo-Json -Depth 10 | Set-Content -Path $testProcFile -Encoding utf8NoBOM
+
+        $listedProc = @((Get-ProcessList).processes | Where-Object { $_.id -eq $testProcId }) | Select-Object -First 1
+        Assert-Equal -Name "Get-ProcessList strips orphaned ANSI fragments from heartbeat_status" `
+            -Expected "Idle" `
+            -Actual $listedProc.heartbeat_status
+        Assert-Equal -Name "Get-ProcessList strips orphaned ANSI fragments from heartbeat_next_action" `
+            -Expected "Wait" `
+            -Actual $listedProc.heartbeat_next_action
+
+        $state = Get-BotState
+        Assert-Equal -Name "Get-BotState exposes sanitized execution status" `
+            -Expected "Idle" `
+            -Actual $state.instances.execution.status
+        Assert-Equal -Name "Get-BotState exposes sanitized execution next_action" `
+            -Expected "Wait" `
+            -Actual $state.instances.execution.next_action
+    } finally {
+        if (Test-Path $testProcFile) {
+            Remove-Item $testProcFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+} else {
+    Write-TestResult -Name "Process status sanitization test modules exist" -Status Fail -Message "One or more UI/process modules were not found in $botDir"
+}
+
+Write-Host ""
+
 # MCP SERVER BOOT
 # ═══════════════════════════════════════════════════════════════════
 
@@ -2219,4 +2319,3 @@ $allPassed = Write-TestSummary -LayerName "Layer 2: Components"
 if (-not $allPassed) {
     exit 1
 }
-

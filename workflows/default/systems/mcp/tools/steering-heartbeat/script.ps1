@@ -1,3 +1,19 @@
+$script:ConsoleSequencePattern = "(\x1B\[[0-9;?]*[ -/]*[@-~])|(\[[0-9;?]*[ -/]*[@-~])"
+
+function Remove-ConsoleSequences {
+    param(
+        [AllowNull()]
+        [object]$Text
+    )
+
+    if ($null -eq $Text) {
+        return $null
+    }
+
+    $clean = [regex]::Replace([string]$Text, $script:ConsoleSequencePattern, "")
+    return $clean.Trim()
+}
+
 function Invoke-SteeringHeartbeat {
     <#
     .SYNOPSIS
@@ -104,10 +120,13 @@ function Invoke-SteeringHeartbeat {
     }
 
     # Update process file with heartbeat info (atomic write)
+    $sanitizedStatus = Remove-ConsoleSequences $status
+    $sanitizedNextAction = Remove-ConsoleSequences $nextAction
+
     $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
     $processData.last_whisper_index = $currentIndex
-    $processData.heartbeat_status = $status
-    $processData.heartbeat_next_action = if ($nextAction) { $nextAction } else { $null }
+    $processData.heartbeat_status = $sanitizedStatus
+    $processData.heartbeat_next_action = if ([string]::IsNullOrWhiteSpace($sanitizedNextAction)) { $null } else { $sanitizedNextAction }
 
     try {
         $tempFile = "$processFile.tmp"

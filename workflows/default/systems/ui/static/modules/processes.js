@@ -164,7 +164,7 @@ function renderProcessList(processes) {
 
             // Heartbeat subtitle — visible without expanding
             if (isActive && proc.heartbeat_status) {
-                html += `<div class="process-heartbeat-subtitle">${escapeHtml(proc.heartbeat_status)}</div>`;
+                html += `<div class="process-heartbeat-subtitle">${escapeHtml(stripConsoleSequences(proc.heartbeat_status))}</div>`;
             }
 
             // Expanded detail panel
@@ -176,10 +176,10 @@ function renderProcessList(processes) {
                 html += `  <span class="process-meta-item"><b>Model:</b> ${proc.model || '--'}</span>`;
                 html += `  <span class="process-meta-item"><b>Tasks:</b> ${proc.tasks_completed || 0}</span>`;
                 if (proc.heartbeat_status) {
-                    html += `  <span class="process-meta-item"><b>Status:</b> ${escapeHtml(proc.heartbeat_status)}</span>`;
+                    html += `  <span class="process-meta-item"><b>Status:</b> ${escapeHtml(stripConsoleSequences(proc.heartbeat_status))}</span>`;
                 }
                 if (proc.heartbeat_next_action) {
-                    html += `  <span class="process-meta-item"><b>Next:</b> ${escapeHtml(proc.heartbeat_next_action)}</span>`;
+                    html += `  <span class="process-meta-item"><b>Next:</b> ${escapeHtml(stripConsoleSequences(proc.heartbeat_next_action))}</span>`;
                 }
                 html += `</div>`;
 
