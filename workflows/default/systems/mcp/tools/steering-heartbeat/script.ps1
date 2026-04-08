@@ -1,4 +1,4 @@
-Import-Module (Join-Path $PSScriptRoot "..\..\..\runtime\modules\ConsoleSequenceSanitizer.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "..\..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
 
 function Invoke-SteeringHeartbeat {
     <#
@@ -106,8 +106,8 @@ function Invoke-SteeringHeartbeat {
     }
 
     # Update process file with heartbeat info (atomic write)
-    $sanitizedStatus = Normalize-ConsoleSequenceText $status
-    $sanitizedNextAction = Normalize-ConsoleSequenceText $nextAction
+    $sanitizedStatus = ConvertTo-SanitizedConsoleText $status
+    $sanitizedNextAction = ConvertTo-SanitizedConsoleText $nextAction
 
     $processData.last_heartbeat = (Get-Date).ToUniversalTime().ToString("o")
     $processData.last_whisper_index = $currentIndex

@@ -15,24 +15,7 @@ $script:Config = @{
     ProcessesDir = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1") -Force
-
-function Sanitize-ProcessHeartbeatFields {
-    param(
-        [Parameter(Mandatory)]
-        [object]$Process
-    )
-
-    if ($Process.PSObject.Properties['heartbeat_status']) {
-        $Process.heartbeat_status = Normalize-ConsoleSequenceText $Process.heartbeat_status
-    }
-
-    if ($Process.PSObject.Properties['heartbeat_next_action']) {
-        $Process.heartbeat_next_action = Normalize-ConsoleSequenceText $Process.heartbeat_next_action
-    }
-
-    return $Process
-}
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
 
 function Initialize-StateBuilder {
     param(
@@ -544,7 +527,7 @@ function Get-BotState {
         foreach ($pf in $procFiles) {
             try {
                 $proc = Get-Content $pf.FullName -Raw | ConvertFrom-Json
-                $proc = Sanitize-ProcessHeartbeatFields -Process $proc
+                $proc = Update-ProcessHeartbeatFields -Process $proc
 
                 # Count processes waiting for interview answers
                 if ($proc.status -eq 'needs-input' -and $proc.pending_questions) {

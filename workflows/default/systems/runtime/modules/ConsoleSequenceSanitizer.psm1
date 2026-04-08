@@ -8,6 +8,8 @@ terminal formatting artifacts do not leak into persisted process metadata or UI
 rendering paths.
 #>
 
+# The second alternative intentionally strips orphaned CSI fragments after the
+# ESC byte is lost. Keep this sanitizer scoped to process heartbeat text.
 $script:ConsoleSequencePattern = "(\x1B\[[0-9;?]*[ -/]*[@-~])|(\[[0-9;?]*[ -/]*[@-~])"
 
 function Remove-ConsoleSequences {
@@ -24,7 +26,7 @@ function Remove-ConsoleSequences {
     return $clean.Trim()
 }
 
-function Normalize-ConsoleSequenceText {
+function ConvertTo-SanitizedConsoleText {
     param(
         [AllowNull()]
         [object]$Text
@@ -38,4 +40,21 @@ function Normalize-ConsoleSequenceText {
     return $clean
 }
 
-Export-ModuleMember -Function @('Remove-ConsoleSequences', 'Normalize-ConsoleSequenceText')
+function Update-ProcessHeartbeatFields {
+    param(
+        [Parameter(Mandatory)]
+        [object]$Process
+    )
+
+    if ($Process.PSObject.Properties['heartbeat_status']) {
+        $Process.heartbeat_status = ConvertTo-SanitizedConsoleText $Process.heartbeat_status
+    }
+
+    if ($Process.PSObject.Properties['heartbeat_next_action']) {
+        $Process.heartbeat_next_action = ConvertTo-SanitizedConsoleText $Process.heartbeat_next_action
+    }
+
+    return $Process
+}
+
+Export-ModuleMember -Function @('ConvertTo-SanitizedConsoleText', 'Update-ProcessHeartbeatFields')

@@ -14,24 +14,7 @@ $script:Config = @{
     ControlDir = $null
 }
 
-Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1") -Force
-
-function Sanitize-ProcessDisplayFields {
-    param(
-        [Parameter(Mandatory)]
-        [object]$Process
-    )
-
-    if ($Process.PSObject.Properties['heartbeat_status']) {
-        $Process.heartbeat_status = Normalize-ConsoleSequenceText $Process.heartbeat_status
-    }
-
-    if ($Process.PSObject.Properties['heartbeat_next_action']) {
-        $Process.heartbeat_next_action = Normalize-ConsoleSequenceText $Process.heartbeat_next_action
-    }
-
-    return $Process
-}
+Import-Module (Join-Path $PSScriptRoot "..\..\runtime\modules\ConsoleSequenceSanitizer.psm1")
 
 function Initialize-ProcessAPI {
     param(
@@ -91,7 +74,7 @@ function Get-ProcessList {
                 }
             }
 
-            $processList += (Sanitize-ProcessDisplayFields -Process $proc)
+            $processList += (Update-ProcessHeartbeatFields -Process $proc)
         } catch { Write-BotLog -Level Debug -Message "Logging operation failed" -Exception $_ }
     }
 
@@ -294,7 +277,7 @@ function Get-ProcessDetail {
 
     $procFile = Join-Path $processesDir "$ProcessId.json"
     if (Test-Path $procFile) {
-        return Sanitize-ProcessDisplayFields -Process (Get-Content $procFile -Raw | ConvertFrom-Json)
+        return Update-ProcessHeartbeatFields -Process (Get-Content $procFile -Raw | ConvertFrom-Json)
     } else {
         return @{ _statusCode = 404; error = "Process not found: $ProcessId" }
     }
