@@ -32,7 +32,7 @@ $script:NoiseDirectories = @(
     'Debug', 'Release', 'x64', 'x86',
     '.vs', '.idea', '.vscode',
     '__pycache__', '.mypy_cache',
-    '.git', '.control', '.playwright-mcp',
+    '.git', '.control', '.playwright-mcp', '.serena',
     'TestResults', 'test-results', 'playwright-report',
     'sessions'
 )
