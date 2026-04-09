@@ -195,6 +195,7 @@ Write-Host "  PROCESS STATUS SANITIZATION" -ForegroundColor Cyan
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
 
 $fileWatcherModule = Join-Path $botDir "systems\ui\modules\FileWatcher.psm1"
+$controlApiModule = Join-Path $botDir "systems\ui\modules\ControlAPI.psm1"
 $processApiModule = Join-Path $botDir "systems\ui\modules\ProcessAPI.psm1"
 $stateBuilderModule = Join-Path $botDir "systems\ui\modules\StateBuilder.psm1"
 $steeringHeartbeatScript = Join-Path $botDir "systems\mcp\tools\steering-heartbeat\script.ps1"
@@ -204,10 +205,11 @@ $testControlDir = Join-Path $botDir ".control"
 $testProcessesDir = Join-Path $testControlDir "processes"
 $testLogsDir = Join-Path $testControlDir "logs"
 
-if ((Test-Path $fileWatcherModule) -and (Test-Path $processApiModule) -and (Test-Path $stateBuilderModule) -and (Test-Path $steeringHeartbeatScript) -and (Test-Path $dotBotLogModule) -and (Test-Path $consoleSanitizerModule)) {
+if ((Test-Path $fileWatcherModule) -and (Test-Path $controlApiModule) -and (Test-Path $processApiModule) -and (Test-Path $stateBuilderModule) -and (Test-Path $steeringHeartbeatScript) -and (Test-Path $dotBotLogModule) -and (Test-Path $consoleSanitizerModule)) {
     Import-Module $consoleSanitizerModule -Force
     Import-Module $dotBotLogModule -Force
     Import-Module $fileWatcherModule -Force
+    Import-Module $controlApiModule -Force
     Import-Module $processApiModule -Force
     Import-Module $stateBuilderModule -Force
     $global:DotbotProjectRoot = $testProject
@@ -221,12 +223,14 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $processApiModule) -and (Test
     }
     Initialize-DotBotLog -LogDir $testLogsDir -ControlDir $testControlDir -ProjectRoot $testProject
     Initialize-FileWatchers -BotRoot $botDir
+    Initialize-ControlAPI -ControlDir $testControlDir -ProcessesDir $testProcessesDir -BotRoot $botDir
     Initialize-ProcessAPI -ProcessesDir $testProcessesDir -BotRoot $botDir -ControlDir $testControlDir
     Initialize-StateBuilder -BotRoot $botDir -ControlDir $testControlDir -ProcessesDir $testProcessesDir
 
     $testProcId = "proc-ansi-sanitize"
     $testProcFile = Join-Path $testProcessesDir "$testProcId.json"
     $testActivityFile = Join-Path $testProcessesDir "$testProcId.activity.jsonl"
+    $globalActivityFile = Join-Path $testControlDir "activity.jsonl"
     $esc = [char]27
 
     try {
@@ -363,12 +367,28 @@ if ((Test-Path $fileWatcherModule) -and (Test-Path $processApiModule) -and (Test
         Assert-Equal -Name "Get-ProcessOutput strips ANSI fragments from activity messages" `
             -Expected "[12:28:39] GET [kickstart]" `
             -Actual $outputData.events[0].message
+
+        @(
+            (@{
+                timestamp = (Get-Date).ToUniversalTime().ToString("o")
+                type = "text"
+                message = "[38;2;56;52;44m[12:28:39][0m [38;2;112;104;92mGET[0m [kickstart]"
+            } | ConvertTo-Json -Compress)
+        ) | Set-Content -Path $globalActivityFile -Encoding utf8NoBOM
+
+        $activityTail = Get-ActivityTail -Position 0 -TailLines 50
+        Assert-Equal -Name "Get-ActivityTail strips ANSI fragments from global activity messages" `
+            -Expected "[12:28:39] GET [kickstart]" `
+            -Actual $activityTail.events[0].message
     } finally {
         if (Test-Path $testProcFile) {
             Remove-Item $testProcFile -Force -ErrorAction SilentlyContinue
         }
         if (Test-Path $testActivityFile) {
             Remove-Item $testActivityFile -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path $globalActivityFile) {
+            Remove-Item $globalActivityFile -Force -ErrorAction SilentlyContinue
         }
     }
 } else {
