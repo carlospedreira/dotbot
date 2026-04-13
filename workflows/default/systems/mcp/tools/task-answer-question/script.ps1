@@ -18,7 +18,7 @@ function Write-InterviewAnswer {
     $existing = @($existing | Where-Object { $_.question_id -ne $Entry.question_id })
     $existing += [PSCustomObject]$Entry
 
-    @{ answers = $existing } | ConvertTo-Json -Depth 10 | Set-Content $answersPath -Encoding UTF8
+    @{ answers = $existing } | ConvertTo-Json -Depth 10 | Set-Content $answersPath -Encoding UTF8NoBOM
 }
 
 function Invoke-TaskAnswerQuestion {
@@ -148,7 +148,12 @@ function Invoke-TaskAnswerQuestion {
         $taskContent.questions_resolved = $existingResolved
 
         # Remove this question from pending_questions
-        $remaining = @($pendingQuestions | Where-Object { $_.id -ne $targetQuestion.id })
+        $remaining = @()
+        for ($i = 0; $i -lt $pendingQuestions.Count; $i++) {
+            if ($i -ne $targetIndex) {
+                $remaining += $pendingQuestions[$i]
+            }
+        }
         $taskContent.pending_questions = $remaining
         $taskContent.updated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
 

@@ -473,14 +473,14 @@ try {
     }
 
     # task_gen + workflow: non-.md value → should stay task_gen (workflow name for filtering)
-    $taskGenFolderDef = @{
+    $taskGenFolterDef = @{
         name     = "Generate Scoring Tasks"
         type     = "task_gen"
         workflow = "scoring"
         script   = "generate-scoring-tasks.ps1"
         priority = 2
     }
-    $tgfResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "scoring" -TaskDef $taskGenFolderDef
+    $tgfResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "scoring" -TaskDef $taskGenFolterDef
     $tgfFile = Join-Path $taskBotDir "workspace\tasks\todo" $tgfResult.file
     if (Test-Path $tgfFile) {
         $tgfJson = Get-Content $tgfFile -Raw | ConvertFrom-Json
