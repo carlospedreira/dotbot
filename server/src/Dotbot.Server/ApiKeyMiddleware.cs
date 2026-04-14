@@ -4,8 +4,18 @@ using System.Text;
 namespace Dotbot.Server;
 
 /// <summary>
-/// Validates the X-Api-Key header on protected endpoints (/api/notify, /api/answers).
-/// Skips /api/messages (Bot Framework handles its own auth) and /api/health.
+/// Validates the X-Api-Key header for requests under the protected API prefixes.
+///
+/// Protected today (see <see cref="ProtectedPrefixes" /> and routes in Program.cs):
+/// - /api/templates
+/// - /api/instances
+/// - /api/attachments
+/// - /tokens/revoke
+///
+/// Not API-key protected by this middleware:
+/// - /api/messages (handled by the Agents SDK adapter pipeline)
+/// - /api/health
+/// - /api/dashboard/* (relies on dashboard auth middleware)
 /// </summary>
 public class ApiKeyMiddleware
 {
