@@ -271,7 +271,7 @@ function New-WorkflowTask {
     # Extract fields — align with task-create MCP tool schema
     $name        = $TaskDef['name']
     $type        = if ($TaskDef['type']) { $TaskDef['type'] } else { 'prompt' }
-    $priority    = if ($TaskDef['priority']) { [int]$TaskDef['priority'] } else { 50 }
+    $priority    = if ($null -ne $TaskDef['priority']) { [int]$TaskDef['priority'] } else { 50 }
     $description = if ($TaskDef['description']) { $TaskDef['description'] } else { $name }
     $effort      = if ($TaskDef['effort']) { $TaskDef['effort'] } else { $Effort }
     $category    = if ($TaskDef['category']) { $TaskDef['category'] } else { $Category }

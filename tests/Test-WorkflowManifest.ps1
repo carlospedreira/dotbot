@@ -513,6 +513,21 @@ try {
             -Condition ($null -eq $noPostJson.PSObject.Properties['post_script'])
     }
 
+    # Priority 0 — regression for priority=0 falsy bug (was silently replaced by default 50)
+    $priorityZeroDef = @{
+        name = "Highest Priority Task"
+        type = "prompt"
+        workflow = "00-kickstart.md"
+        priority = 0
+    }
+    $pzResult = New-WorkflowTask -ProjectBotDir $taskBotDir -WorkflowName "default" -TaskDef $priorityZeroDef
+    $pzFile = Join-Path $taskBotDir "workspace\tasks\todo" $pzResult.file
+    if (Test-Path $pzFile) {
+        $pzJson = Get-Content $pzFile -Raw | ConvertFrom-Json
+        Assert-Equal -Name "Priority 0 preserved (not replaced by default)" `
+            -Expected 0 -Actual $pzJson.priority
+    }
+
 } finally {
     Remove-Item -Path $taskRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

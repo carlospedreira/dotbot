@@ -1791,6 +1791,40 @@
     padding-bottom: 0;
 }
 
+/* Workflow accordion sections (Overview side panel, multi-workflow) */
+.wf-accordion-section {
+    margin-bottom: 6px;
+}
+
+.wf-accordion-section:last-child {
+    margin-bottom: 0;
+}
+
+.wf-accordion-section .wf-accordion-header {
+    display: flex;
+    align-items: center;
+}
+
+.wf-accordion-section.collapsed .wf-accordion-body {
+    display: none;
+}
+
+.wf-accordion-body {
+    padding: 4px 0 2px;
+}
+
+.wf-accordion-body .child-task-progress {
+    padding: 4px 10px 2px 10px;
+}
+
+.wf-accordion-body .child-task-items {
+    padding: 2px 0 2px 8px;
+}
+
+.wf-accordion-body .kickstart-resume-row {
+    padding: 6px 10px 2px;
+}
+
 /* Active phase (task_gen: generation done, tasks running) */
 .kickstart-phase-active .phase-icon {
     color: var(--color-primary);

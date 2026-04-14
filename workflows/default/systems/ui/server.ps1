@@ -1529,8 +1529,9 @@ $docContext
                             $bContinue = if ($body.PSObject.Properties['continue']) { $body.continue -eq $true } else { $false }
                             $bDescription = if ($body.PSObject.Properties['description']) { $body.description } else { $null }
                             $bModel = if ($body.PSObject.Properties['model']) { $body.model } else { $null }
+                            $bWorkflowName = if ($body.PSObject.Properties['workflow_name']) { $body.workflow_name } else { $null }
                             # Start-ProcessLaunch auto-detects max_concurrent for workflow type
-                            $result = Start-ProcessLaunch -Type $bType -TaskId $bTaskId -Prompt $bPrompt -Continue $bContinue -Description $bDescription -Model $bModel
+                            $result = Start-ProcessLaunch -Type $bType -TaskId $bTaskId -Prompt $bPrompt -Continue $bContinue -Description $bDescription -Model $bModel -WorkflowName $bWorkflowName
                             $content = $result | ConvertTo-Json -Compress
                         }
                     } else {
