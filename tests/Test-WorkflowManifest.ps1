@@ -1038,6 +1038,84 @@ Assert-True -Name "Invoke-KickstartProcess no longer has inline post_script path
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
+# KICKSTART FRICTION FIXES (batch 1)
+# ═══════════════════════════════════════════════════════════════════
+# Regressions guarding the four fixes that came out of analysing a real
+# kickstart-from-scratch activity.jsonl run in a downstream harness.
+# See the PR description in fix/kickstart-friction-batch-1 for context.
+
+Write-Host "  KICKSTART FRICTION FIXES" -ForegroundColor Cyan
+Write-Host "  ────────────────────────────────────────────" -ForegroundColor DarkGray
+
+# ── Fix #1: workflow-manifest.ps1 must import ManifestCondition.psm1 with
+# -Global so Test-ManifestCondition remains visible when workflow-manifest.ps1
+# is dot-sourced from inside a function/scriptblock scope (the pattern
+# server.ps1 and task-get-next/script.ps1 use). Without -Global the imported
+# function ends up in a module scope that HTTP route handlers cannot reach.
+$workflowManifestPath = Join-Path $repoRoot "workflows\default\systems\runtime\modules\workflow-manifest.ps1"
+$workflowManifestSrc = Get-Content $workflowManifestPath -Raw
+
+Assert-True -Name "Fix#1: workflow-manifest.ps1 Import-Module for ManifestCondition uses -Global" `
+    -Condition ($workflowManifestSrc -match 'Import-Module\s+\(Join-Path\s+\$PSScriptRoot\s+"ManifestCondition\.psm1"\)[^\r\n]*-Global')
+
+# Regression: dot-source workflow-manifest.ps1 inside a nested scriptblock and
+# verify Test-ManifestCondition remains visible *after that child scope exits*
+# via the -Global import. This reproduces the HTTP route handler failure mode:
+# if the module is imported without -Global, the function would be visible
+# only inside the scriptblock and disappear when it returns. Checking
+# Get-Command outside the scriptblock is what actually validates -Global.
+Remove-Module ManifestCondition -Force -ErrorAction SilentlyContinue
+$nestedProbe = $false
+try {
+    & {
+        . $workflowManifestPath
+    }
+    $nestedProbe = (Get-Command Test-ManifestCondition -ErrorAction SilentlyContinue) -ne $null
+} finally {
+    Remove-Module ManifestCondition -Force -ErrorAction SilentlyContinue
+}
+Assert-True -Name "Fix#1: Test-ManifestCondition visible after nested dot-source of workflow-manifest.ps1" `
+    -Condition $nestedProbe
+
+# ── Fix #2: Invoke-KickstartProcess.ps1 must auto-push phase commits on main/
+# master so the 02-git-pushed.ps1 verify hook does not block task_mark_done.
+Assert-True -Name "Fix#2: Invoke-KickstartProcess auto-pushes on main/master (excludes only task/ branches)" `
+    -Condition ($kickstartSrc -match "currentBranch\s+-notmatch\s+'\^task/'")
+Assert-True -Name "Fix#2: Invoke-KickstartProcess no longer excludes main/master from auto-push" `
+    -Condition (-not ($kickstartSrc -match "'\^\(task/\|master\$\|main\$\)'"))
+Assert-True -Name "Fix#2: auto_push_phase_commits setting is still honoured" `
+    -Condition ($kickstartSrc -match "auto_push_phase_commits")
+
+# ── Fix #3: kickstart prompt templates must instruct agents to retry the same
+# select: query rather than broadening when the MCP server is still warming up.
+$promptFiles = @(
+    (Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\03b-expand-task-group.md"),
+    (Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\01b-generate-decisions.md"),
+    (Join-Path $repoRoot "workflows\default\recipes\prompts\98-analyse-task.md")
+)
+foreach ($pf in $promptFiles) {
+    $relName = Split-Path $pf -Leaf
+    Assert-PathExists -Name "Fix#3: $relName exists" -Path $pf
+    $promptSrc = Get-Content $pf -Raw
+    Assert-True -Name "Fix#3: $relName forbids broadening ToolSearch queries" `
+        -Condition ($promptSrc -match 'do\s+\*\*NOT\*\*\s+broaden')
+    Assert-True -Name "Fix#3: $relName instructs retry of same select: query" `
+        -Condition ($promptSrc -match 'retry\s+the\s+\*\*exact\s+same\*\*\s+`?select:')
+}
+
+# ── Fix #4: 01b-generate-decisions.md must mark interview-summary.md as an
+# optional read so the new_project kickstart path (show_interview: false)
+# doesn't error on a missing file.
+$decisionsPromptPath = Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\01b-generate-decisions.md"
+$decisionsPromptSrc = Get-Content $decisionsPromptPath -Raw
+Assert-True -Name "Fix#4: 01b-generate-decisions.md marks interview-summary.md as optional" `
+    -Condition ($decisionsPromptSrc -match '(?s)interview\s+summary\s+is\s+\*\*optional\*\*.*?interview-summary\.md')
+Assert-True -Name "Fix#4: 01b-generate-decisions.md still reads mission/tech-stack/entity-model unconditionally" `
+    -Condition (($decisionsPromptSrc -match 'mission\.md') -and ($decisionsPromptSrc -match 'tech-stack\.md') -and ($decisionsPromptSrc -match 'entity-model\.md'))
+
+Write-Host ""
+
+# ═══════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═══════════════════════════════════════════════════════════════════
 

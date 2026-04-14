@@ -665,9 +665,17 @@ Instructions:
                 }
 
                 if ($autoPushPhaseCommits) {
-                    # Skip task branches (merged by framework) and default branches (protect master/main)
+                    # Skip task branches (merged by framework later). Push everything
+                    # else — including main/master — because kickstart runs in fresh
+                    # repos where the user chose the starting branch, and the verify
+                    # hook (02-git-pushed.ps1) will otherwise block task_mark_done on
+                    # unpushed phase commits. Users with branch protection on the
+                    # default branch can opt out via `auto_push_phase_commits: false`.
                     $currentBranch = git -C $projectRoot rev-parse --abbrev-ref HEAD 2>$null
-                    if ($currentBranch -and $currentBranch -notmatch '^(task/|master$|main$)') {
+                    $branchLookupExit = $LASTEXITCODE
+                    if (-not $currentBranch -or $branchLookupExit -ne 0) {
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: could not determine current branch (git rev-parse --abbrev-ref HEAD failed or returned empty)"
+                    } elseif ($currentBranch -notmatch '^task/') {
                         $originUrl = git -C $projectRoot remote get-url origin 2>$null
                         if ($LASTEXITCODE -eq 0 -and $originUrl) {
                             $pushOutput = git -C $projectRoot push --quiet origin $currentBranch 2>&1
@@ -681,7 +689,7 @@ Instructions:
                             Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: git remote 'origin' is not configured"
                         }
                     } else {
-                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: branch '$currentBranch' is protected or task-scoped"
+                        Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: branch '$currentBranch' is task-scoped (framework will merge)"
                     }
                 } else {
                     Write-ProcessActivity -Id $procId -ActivityType "text" -Message "Phase $phaseNum push skipped: auto_push_phase_commits setting is disabled"
