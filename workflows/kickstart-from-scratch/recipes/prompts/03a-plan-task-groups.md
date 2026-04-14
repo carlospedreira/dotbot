@@ -62,16 +62,22 @@ Not all projects need all of these. Adapt to the actual project scope. Merge sma
 - Vague "Enhancements" or "Nice-to-haves" — each group should deliver concrete functionality
 - "Intelligence & Rules" unless the product specifically requires AI/ML features
 - Anything that doesn't contribute to a shippable product
+- **Effort-based buckets** (e.g. "Quick Wins", "Tech Debt", "Stretch Goals") — group by *functional area*, not by size or priority.
+- **Groups whose scope cannot yield per-task acceptance criteria** — if you can't state what "done" looks like for each scope item, the group is too vague to expand.
 
 Each group's acceptance criteria should describe a **deployable increment** — something you could demo or ship independently.
 
 ### Step 3: Define Group Dependencies
 
-Groups should have explicit dependencies via `depends_on`:
-- Infrastructure groups have no dependencies
-- Entity/data groups depend on infrastructure
-- Feature groups depend on the entities they use
-- Background jobs depend on the features they orchestrate
+Groups should have explicit dependencies via `depends_on`, following the standard dependency chain:
+
+- **Infrastructure** groups have no dependencies.
+- **Core entities / data layer** groups depend on infrastructure (DB, config, project scaffolding).
+- **Feature handlers** (command/query/API) depend on the core entities they operate on.
+- **Background jobs and workers** depend on the feature handlers they orchestrate.
+- **UI and final integration** groups depend on the features they surface.
+
+Priority ranges (Step 4) already encode execution order within the chain — use `depends_on` for hard technical dependencies only, not for ordering preference.
 
 ### Step 3b: Estimate Effort Days
 
@@ -154,6 +160,56 @@ The file format:
 | `priority_range` | Yes | `[min, max]` — priority range for tasks in this group |
 | `category_hint` | Yes | Default category for tasks: infrastructure, core, feature, enhancement |
 
+---
+
+## Task Schema Reference (inherited by Phase 2b)
+
+The per-group expansion prompt (`03b-expand-task-group.md`) will produce individual tasks from each group's `scope` bullets. You are planning at the group level, but every group you define must be *expandable* into tasks that carry the following schema. Keep this in mind when sizing, scoping, and estimating groups:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Brief, action-oriented title ("Implement X command handler", "Add X entity with migrations") |
+| `description` | Yes | What / where / why / how / patterns to reference |
+| `category` | Yes | `infrastructure` / `core` / `feature` / `enhancement` / `ui-ux` / `bugfix` |
+| `priority` | Yes | 1–100 (within this group's `priority_range`) |
+| `effort` | Yes | `XS` / `S` / `M` / `L` / `XL` (see sizing table below) |
+| `acceptance_criteria` | Yes | Array of specific, testable success conditions — see quality bar below |
+| `steps` | No | Implementation steps for guidance |
+| `dependencies` | No | Array of task IDs this depends on (within or across groups) |
+| `applicable_standards` | No | Standards files to read before implementing |
+| `applicable_agents` | No | Agent files to use for implementation |
+| `applicable_decisions` | No | Decisions constraining this task (narrowed from the group's list) |
+| `human_hours` | Yes | Estimated developer-hours for a skilled human, unassisted |
+| `ai_hours` | Yes | Estimated AI-assisted developer-hours |
+
+Groups whose `scope` items cannot produce tasks matching this schema are too vague — refine them before writing `task-groups.json`.
+
+## Good Task Acceptance Criteria
+
+When 03b expands your groups, each task's `acceptance_criteria` must meet this bar:
+
+- **Specific and testable** — not "works correctly" but "returns 200 with JSON body containing `{id, name}` on success".
+- **Each item starts with a verb** — "Returns…", "Rejects…", "Persists…", "Logs…".
+- **Covers the happy path and key edge cases** — invalid input, missing auth, empty result set, concurrent mutation, etc.
+- **Includes test requirements where appropriate** — "Unit test asserts…", "Integration test verifies…".
+- **No "TODO" or open ends** — if you don't know what done looks like, the task is not ready to create.
+
+When drafting a group's `acceptance_criteria`, make sure each bullet describes a *shippable behavior* of the whole group — not a developer task. If you can't phrase it as a verifiable behavior, split or rescope the group.
+
+## Effort Sizing
+
+Use this table for task-level `effort` values (which feed into the group's `effort_days`):
+
+| Effort | Typical Duration (human) | Examples |
+|--------|--------------------------|----------|
+| `XS`   | < 1 hour   | Add one field to an entity, flip a config, register a handler |
+| `S`    | 1–2 hours  | Simple command/query handler, basic CRUD endpoint |
+| `M`    | 2–4 hours  | Feature with tests, integration wiring, small migration |
+| `L`    | 4–8 hours  | Complex feature, multiple components, end-to-end wiring |
+| `XL`   | 1–2 days   | Major subsystem, significant refactoring, cross-cutting change |
+
+A group's `effort_days` should roughly equal the sum of its tasks' human-hour estimates divided by 6 (focused dev-hours per day). If a group exceeds ~15 `effort_days`, split it.
+
 ### Guidelines
 
 - **Keep it lightweight.** Scope bullets, not detailed task breakdowns.
@@ -177,3 +233,7 @@ Write `.bot/workspace/product/task-groups.json` and confirm with a brief summary
 - Total estimated tasks
 - Total estimated effort (days)
 - Group names and their order
+
+---
+
+**What happens next.** The per-group expansion in `03b-expand-task-group.md` inherits the **Task Schema Reference**, **Good Task Acceptance Criteria**, and **Effort Sizing** sections above. Every constraint stated here must carry through to the tasks 03b produces — do not relax them during expansion. Groups that are under-specified now will produce thin tasks later.
