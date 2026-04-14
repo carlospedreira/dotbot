@@ -1113,6 +1113,102 @@ Assert-True -Name "Fix#4: 01b-generate-decisions.md marks interview-summary.md a
 Assert-True -Name "Fix#4: 01b-generate-decisions.md still reads mission/tech-stack/entity-model unconditionally" `
     -Condition (($decisionsPromptSrc -match 'mission\.md') -and ($decisionsPromptSrc -match 'tech-stack\.md') -and ($decisionsPromptSrc -match 'entity-model\.md'))
 
+# ── Batch 2, Fix A: 99-autonomous-task.md must teach agents branch-conditional
+# push semantics so tasks that run on shared branches (main/master) are
+# pushed immediately instead of leaving the agent stuck on the
+# 02-git-pushed.ps1 gate at task_mark_done time.
+$autonomousTaskPrompts = @(
+    (Join-Path $repoRoot "workflows\default\recipes\prompts\99-autonomous-task.md"),
+    (Join-Path $repoRoot "workflows\kickstart-via-jira\recipes\prompts\99-autonomous-task.md")
+)
+foreach ($pf in $autonomousTaskPrompts) {
+    $relName = Split-Path $pf -Leaf
+    # Walk up 3 parents to reach the workflow directory (e.g. "workflows/default")
+    # then take its leaf to get the workflow name ("default", "kickstart-via-jira").
+    # Path structure: workflows/<workflow>/recipes/prompts/<file>.md.
+    $parentDir = Split-Path (Split-Path (Split-Path (Split-Path $pf -Parent) -Parent) -Parent) -Leaf
+    Assert-PathExists -Name "Fix#A: $parentDir/$relName exists" -Path $pf
+    $src = Get-Content $pf -Raw
+    Assert-True -Name "Fix#A: $parentDir/$relName has branch-conditional task/ guard" `
+        -Condition ($src -match 'If\s+`\{\{BRANCH_NAME\}\}`\s+starts\s+with\s+`task/`')
+    Assert-True -Name "Fix#A: $parentDir/$relName instructs push on shared branches" `
+        -Condition ($src -match 'push\s+immediately\s+to\s+`origin/\{\{BRANCH_NAME\}\}`')
+    Assert-True -Name "Fix#A: $parentDir/$relName cites 02-git-pushed.ps1 failure mode" `
+        -Condition ($src -match '02-git-pushed\.ps1')
+    Assert-True -Name "Fix#A: $parentDir/$relName no longer hardcodes 'git worktree on branch' assertion" `
+        -Condition (-not ($src -match 'You are working in a \*\*git worktree\*\* on branch'))
+}
+
+# ── Batch 2, Fix B: 03a-plan-task-groups.md must include task-level rigor
+# (schema, acceptance-criteria quality bar, effort sizing, dependency chain)
+# that 03b-expand-task-group.md inherits during expansion.
+$planTaskGroupsPath = Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\03a-plan-task-groups.md"
+Assert-PathExists -Name "Fix#B: 03a-plan-task-groups.md exists" -Path $planTaskGroupsPath
+$planTaskGroupsSrc = Get-Content $planTaskGroupsPath -Raw
+
+Assert-True -Name "Fix#B: 03a has Task Schema Reference section" `
+    -Condition ($planTaskGroupsSrc -match '##\s+Task Schema Reference')
+Assert-True -Name "Fix#B: 03a requires per-task acceptance_criteria field" `
+    -Condition ($planTaskGroupsSrc -match '`acceptance_criteria`.*testable')
+Assert-True -Name "Fix#B: 03a requires human_hours / ai_hours estimates" `
+    -Condition (($planTaskGroupsSrc -match '`human_hours`') -and ($planTaskGroupsSrc -match '`ai_hours`'))
+Assert-True -Name "Fix#B: 03a has Good Task Acceptance Criteria section" `
+    -Condition ($planTaskGroupsSrc -match '##\s+Good Task Acceptance Criteria')
+Assert-True -Name "Fix#B: 03a has Effort Sizing section" `
+    -Condition ($planTaskGroupsSrc -match '##\s+Effort Sizing')
+Assert-True -Name "Fix#B: 03a Effort Sizing has XS through XL rows" `
+    -Condition (($planTaskGroupsSrc -match '`XS`') -and ($planTaskGroupsSrc -match '`XL`'))
+Assert-True -Name "Fix#B: 03a Step 3 dependency chain mentions infra/entities/features" `
+    -Condition ($planTaskGroupsSrc -match '(?s)Infrastructure.*entities.*[Ff]eature.*jobs')
+Assert-True -Name "Fix#B: 03a anti-patterns forbid effort-based buckets" `
+    -Condition ($planTaskGroupsSrc -match '[Ee]ffort-based\s+buckets')
+
+# ── Batch 2, Fix B cross-link: 03b-expand-task-group.md must inherit from 03a.
+$expandTaskGroupPath = Join-Path $repoRoot "workflows\kickstart-from-scratch\recipes\prompts\03b-expand-task-group.md"
+$expandTaskGroupSrc = Get-Content $expandTaskGroupPath -Raw
+Assert-True -Name "Fix#B: 03b cross-links to 03a for schema/criteria/sizing" `
+    -Condition ($expandTaskGroupSrc -match 'Inherits\s+from\s+03a-plan-task-groups\.md')
+Assert-True -Name "Fix#B: 03b tells agent not to relax constraints during expansion" `
+    -Condition ($expandTaskGroupSrc -match 'do\s+not\s+relax\s+them\s+during\s+expansion')
+
+# ── Batch 2, Fix C: 98-analyse-task.md must guard mission/tech-stack/entity-model
+# reads against the current task's outputs list, so tasks that produce those
+# files (e.g. kickstart Product Documents) do not error during pre-flight
+# analysis trying to read files they are supposed to create.
+$analyseTaskPath = Join-Path $repoRoot "workflows\default\recipes\prompts\98-analyse-task.md"
+Assert-PathExists -Name "Fix#C: 98-analyse-task.md exists" -Path $analyseTaskPath
+$analyseTaskSrc = Get-Content $analyseTaskPath -Raw
+Assert-True -Name "Fix#C: 98-analyse-task.md has skip-if-produced guard in Phase 2" `
+    -Condition ($analyseTaskSrc -match '(?s)Phase\s+2:\s+Entity\s+Detection.*?Skip-if-produced\s+guard')
+Assert-True -Name "Fix#C: 98-analyse-task.md has skip-if-produced guard in Phase 6" `
+    -Condition ($analyseTaskSrc -match '(?s)Phase\s+6:\s+Product\s+Context\s+Extraction.*?Skip-if-produced\s+guard')
+Assert-True -Name "Fix#C: 98-analyse-task.md entity-model read is marked skip-if-outputs" `
+    -Condition ($analyseTaskSrc -match 'Read\s+entity\s+model[^\r\n]*skip\s+if\s+in\s+task\s+`outputs`')
+Assert-True -Name "Fix#C: 98-analyse-task.md mission read is marked skip-if-outputs" `
+    -Condition ($analyseTaskSrc -match 'Read\s+mission[^\r\n]*skip\s+if\s+in\s+task\s+`outputs`')
+Assert-True -Name "Fix#C: 98-analyse-task.md refers to task outputs list for the guard" `
+    -Condition ($analyseTaskSrc -match "task's\s+``outputs``\s+list")
+
+# ── Batch 2, Fix D: 98-analyse-task.md must treat .bot/recipes/standards/global
+# as an optional directory; skip the glob if it does not exist.
+Assert-True -Name "Fix#D: 98-analyse-task.md marks standards/global listing as skip-if-missing" `
+    -Condition ($analyseTaskSrc -match '(?s)List\s+available\s+standards\s+\(skip\s+if\s+directory\s+missing\)')
+Assert-True -Name "Fix#D: 98-analyse-task.md describes standards/global as optional" `
+    -Condition ($analyseTaskSrc -match '`\.bot/recipes/standards/global/`\s+directory\s+is\s+optional')
+Assert-True -Name "Fix#D: 98-analyse-task.md tells agent not to treat missing standards/global as error" `
+    -Condition ($analyseTaskSrc -match 'Do\s+\*\*not\*\*\s+treat\s+the\s+missing\s+directory\s+as\s+an\s+error')
+
+# ── Batch 2, Fix E: 03a category_hint field-reference row must list the full
+# six-value enum and forbid inventing new categories like `frontend`.
+Assert-True -Name "Fix#E: 03a category_hint row lists ui-ux enum value" `
+    -Condition ($planTaskGroupsSrc -match '(?s)\|\s+`category_hint`.*?`ui-ux`')
+Assert-True -Name "Fix#E: 03a category_hint row lists bugfix enum value" `
+    -Condition ($planTaskGroupsSrc -match '(?s)\|\s+`category_hint`.*?`bugfix`')
+Assert-True -Name "Fix#E: 03a category_hint row forbids inventing new categories" `
+    -Condition ($planTaskGroupsSrc -match '(?s)`category_hint`.*?Do\s+NOT\s+invent\s+new\s+categories')
+Assert-True -Name "Fix#E: 03a category_hint row cites task_create_bulk validator" `
+    -Condition ($planTaskGroupsSrc -match '(?s)`category_hint`.*?`task_create_bulk`\s+validator')
+
 Write-Host ""
 
 # ═══════════════════════════════════════════════════════════════════
