@@ -68,7 +68,8 @@ function Invoke-TaskMarkNeedsInput {
         $updates['pending_questions'] = $existingPending + $newPending
         $newPendingQuestions = $newPending
         $updates['pending_question'] = $null
-        $updates['split_proposal'] = $null
+        $updates['split_proposal']   = $null
+        $updates['notification']     = $null
         $updates['questions_resolved'] = $questionsResolved
     }
     elseif ($question) {

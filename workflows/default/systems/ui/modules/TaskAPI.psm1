@@ -404,8 +404,10 @@ function Submit-TaskAnswer {
     $resolvedQuestionId = $QuestionId
     if (-not $resolvedQuestionId) {
         $needsInputDir = Join-Path $script:Config.BotRoot "workspace\tasks\needs-input"
-        $taskFilePath  = Join-Path $needsInputDir "$TaskId.json"
-        if (Test-Path $taskFilePath) {
+        $taskFilePath  = Get-ChildItem -Path $needsInputDir -Filter "*.json" -ErrorAction SilentlyContinue |
+            Where-Object { (Get-Content $_.FullName -Raw | ConvertFrom-Json).id -eq $TaskId } |
+            Select-Object -First 1 -ExpandProperty FullName
+        if ($taskFilePath -and (Test-Path $taskFilePath)) {
             $taskData = Get-Content $taskFilePath -Raw | ConvertFrom-Json
             if ($taskData.PSObject.Properties['pending_questions'] -and $taskData.pending_questions -and @($taskData.pending_questions).Count -gt 0) {
                 $resolvedQuestionId = @($taskData.pending_questions)[0].id
