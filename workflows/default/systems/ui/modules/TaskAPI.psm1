@@ -399,58 +399,56 @@ function Submit-TaskAnswer {
         $Answer = $CustomText
     }
 
+    # Always resolve the question ID so it is used consistently for both attachment
+    # placement and the answer submission — not only when attachments are present.
+    $resolvedQuestionId = $QuestionId
+    if (-not $resolvedQuestionId) {
+        $needsInputDir = Join-Path $script:Config.BotRoot "workspace\tasks\needs-input"
+        $taskFilePath  = Join-Path $needsInputDir "$TaskId.json"
+        if (Test-Path $taskFilePath) {
+            $taskData = Get-Content $taskFilePath -Raw | ConvertFrom-Json
+            if ($taskData.PSObject.Properties['pending_questions'] -and $taskData.pending_questions -and @($taskData.pending_questions).Count -gt 0) {
+                $resolvedQuestionId = @($taskData.pending_questions)[0].id
+            } elseif ($taskData.pending_question) {
+                $resolvedQuestionId = $taskData.pending_question.id
+            }
+        }
+    }
+
     # Save attachment files to disk and build metadata
     $attachmentMeta = @()
-    $resolvedQuestionId = $QuestionId   # may be overridden below if attachments need it
     if ($Attachments -and @($Attachments).Count -gt 0) {
         $allowedExtensions = @('.md', '.docx', '.xlsx', '.pdf', '.txt')
 
-        # Read task file directly by ID (tasks are stored as {id}.json)
-        $needsInputDir = Join-Path $script:Config.BotRoot "workspace\tasks\needs-input"
-        $taskFilePath = Join-Path $needsInputDir "$TaskId.json"
-
-        if (Test-Path $taskFilePath) {
-            $taskData = Get-Content $taskFilePath -Raw | ConvertFrom-Json
-            # Determine question ID: prefer explicit param, then batch array, then singular
-            $resolvedQuestionId = $QuestionId
-            if (-not $resolvedQuestionId) {
-                if ($taskData.PSObject.Properties['pending_questions'] -and $taskData.pending_questions -and @($taskData.pending_questions).Count -gt 0) {
-                    $resolvedQuestionId = @($taskData.pending_questions)[0].id
-                } elseif ($taskData.pending_question) {
-                    $resolvedQuestionId = $taskData.pending_question.id
-                }
+        if (-not $resolvedQuestionId) {
+            Write-DotbotWarning "Skipping attachments for task '$TaskId': no pending question could be resolved"
+        } else {
+            $attachDir = Join-Path $script:Config.BotRoot "workspace\attachments\$TaskId\$resolvedQuestionId"
+            if (-not (Test-Path $attachDir)) {
+                New-Item -ItemType Directory -Force -Path $attachDir | Out-Null
             }
 
-            if (-not $resolvedQuestionId) {
-                Write-DotbotWarning "Skipping attachments for task '$TaskId': no pending question could be resolved"
-            } else {
-                $attachDir = Join-Path $script:Config.BotRoot "workspace\attachments\$TaskId\$resolvedQuestionId"
-                if (-not (Test-Path $attachDir)) {
-                    New-Item -ItemType Directory -Force -Path $attachDir | Out-Null
+            foreach ($att in @($Attachments)) {
+                $safeName = [System.IO.Path]::GetFileName($att.name)
+                $ext = [System.IO.Path]::GetExtension($safeName).ToLower()
+                if ($ext -notin $allowedExtensions) {
+                    Write-DotbotWarning "Skipping attachment '$safeName': unsupported extension '$ext'"
+                    continue
                 }
 
-                foreach ($att in @($Attachments)) {
-                    $safeName = [System.IO.Path]::GetFileName($att.name)
-                    $ext = [System.IO.Path]::GetExtension($safeName).ToLower()
-                    if ($ext -notin $allowedExtensions) {
-                        Write-DotbotWarning "Skipping attachment '$safeName': unsupported extension '$ext'"
-                        continue
-                    }
+                try {
+                    $bytes = [System.Convert]::FromBase64String($att.content)
+                    $filePath = Join-Path $attachDir $safeName
+                    [System.IO.File]::WriteAllBytes($filePath, $bytes)
+                    $relPath = ".bot/workspace/attachments/$TaskId/$resolvedQuestionId/$safeName"
 
-                    try {
-                        $bytes = [System.Convert]::FromBase64String($att.content)
-                        $filePath = Join-Path $attachDir $safeName
-                        [System.IO.File]::WriteAllBytes($filePath, $bytes)
-                        $relPath = ".bot/workspace/attachments/$TaskId/$resolvedQuestionId/$safeName"
-
-                        $attachmentMeta += @{
-                            name = $safeName
-                            size = $att.size
-                            path = $relPath
-                        }
-                    } catch {
-                        Write-DotbotWarning "Failed to save attachment '$($att.name)': $($_.Exception.Message)"
+                    $attachmentMeta += @{
+                        name = $safeName
+                        size = $att.size
+                        path = $relPath
                     }
+                } catch {
+                    Write-DotbotWarning "Failed to save attachment '$($att.name)': $($_.Exception.Message)"
                 }
             }
         }
