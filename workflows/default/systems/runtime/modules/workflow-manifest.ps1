@@ -171,8 +171,13 @@ function Convert-ManifestRequiresToPreflightChecks {
     return $checks
 }
 
-# Test-ManifestCondition lives in its own module for controlled exports.
-Import-Module (Join-Path $PSScriptRoot "ManifestCondition.psm1") -Force -DisableNameChecking
+# Import with -Global so Test-ManifestCondition is visible to callers that
+# dot-source workflow-manifest.ps1 from inside a function/scriptblock scope
+# (e.g. server.ps1 and task-get-next/script.ps1). Without -Global, the
+# imported function ends up in a module scope that is not reached by the
+# lookup chain at some HTTP route handler call sites, producing intermittent
+# "The term 'Test-ManifestCondition' is not recognized" errors.
+Import-Module (Join-Path $PSScriptRoot "ManifestCondition.psm1") -Force -DisableNameChecking -Global
 
 function Ensure-ManifestTaskIds {
     <#
