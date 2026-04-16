@@ -3607,9 +3607,318 @@ if (Test-Path $productApiModule) {
         Assert-True -Name "ProductAPI loads explicit .json route when .md also exists" `
             -Condition ($missionJsonDoc.success -eq $true -and $missionJsonDoc.content -match 'Mission JSON') `
             -Message "Expected mission.json content when requested explicitly"
+
+        # ═════════════════════════════════════════════════════════════════
+        # Get-KickstartStatus — script-phase probe + process-type filter
+        # Regression tests for #244: Overview stuck on Task Group Expansion
+        # ═════════════════════════════════════════════════════════════════
+
+        # Set up a fresh, isolated workspace for kickstart status tests so
+        # state doesn't leak into the doc tests above.
+        $kickstartTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) "dotbot-kickstart-status-$([guid]::NewGuid().ToString().Substring(0,8))"
+        $kickstartBotRoot  = Join-Path $kickstartTestRoot ".bot"
+        $kickstartControl  = Join-Path $kickstartBotRoot ".control"
+        $kickstartSettings = Join-Path $kickstartBotRoot "settings"
+        $kickstartTasksDir = Join-Path $kickstartBotRoot "workspace\tasks"
+        $kickstartProductDir = Join-Path $kickstartBotRoot "workspace\product"
+        $kickstartDecisionsDir = Join-Path $kickstartBotRoot "workspace\decisions"
+
+        foreach ($d in @($kickstartControl, (Join-Path $kickstartControl 'processes'), $kickstartSettings, $kickstartProductDir, $kickstartDecisionsDir)) {
+            New-Item -Path $d -ItemType Directory -Force | Out-Null
+        }
+        # Create the full canonical task pipeline dir set (matches
+        # workflow-manifest.ps1 Clear-WorkspaceTaskDirs).
+        foreach ($td in @('todo','analysing','needs-input','analysed','in-progress','done','skipped','cancelled','split')) {
+            New-Item -Path (Join-Path $kickstartTasksDir $td) -ItemType Directory -Force | Out-Null
+        }
+
+        # Mark the first three phases complete via disk artifacts
+        Set-Content -Path (Join-Path $kickstartProductDir 'mission.md') -Value '# Mission' -Encoding UTF8
+        Set-Content -Path (Join-Path $kickstartProductDir 'tech-stack.md') -Value '# Tech' -Encoding UTF8
+        Set-Content -Path (Join-Path $kickstartProductDir 'entity-model.md') -Value '# Entities' -Encoding UTF8
+        Set-Content -Path (Join-Path $kickstartProductDir 'task-groups.json') -Value '{"groups":[]}' -Encoding UTF8
+        Set-Content -Path (Join-Path $kickstartDecisionsDir 'dec-0001.md') -Value '# Decision 1' -Encoding UTF8
+
+        # Minimal legacy kickstart phase list via settings.default.json — the
+        # Get-KickstartStatus fallback path. Avoids needing a YAML parser in
+        # the test environment.
+        $kickstartPhasesJson = @'
+{
+  "kickstart": {
+    "phases": [
+      {
+        "id": "product-documents",
+        "name": "Product Documents",
+        "type": "prompt",
+        "outputs": ["mission.md", "tech-stack.md", "entity-model.md"]
+      },
+      {
+        "id": "generate-decisions",
+        "name": "Generate Decisions",
+        "type": "prompt",
+        "outputs_dir": "decisions",
+        "min_output_count": 1
+      },
+      {
+        "id": "task-groups",
+        "name": "Task Groups",
+        "type": "prompt",
+        "outputs": ["task-groups.json"]
+      },
+      {
+        "id": "task-group-expansion",
+        "name": "Task Group Expansion",
+        "type": "script",
+        "script": "expand-task-groups.ps1",
+        "commit": { "paths": ["workspace/tasks/"] }
+      }
+    ]
+  }
+}
+'@
+        Set-Content -Path (Join-Path $kickstartSettings 'settings.default.json') -Value $kickstartPhasesJson -Encoding UTF8
+
+        # Get-KickstartStatus dot-sources $BotRoot/systems/runtime/modules/workflow-manifest.ps1
+        # and that file imports ManifestCondition.psm1 from the same directory.
+        # Copy both helpers into the test bot root so the integration test can run.
+        $runtimeModulesDir = Join-Path $kickstartBotRoot "systems\runtime\modules"
+        New-Item -Path $runtimeModulesDir -ItemType Directory -Force | Out-Null
+        $repoRootForTest = Split-Path $PSScriptRoot -Parent
+        $realRuntimeModules = Join-Path $repoRootForTest "workflows\default\systems\runtime\modules"
+        Copy-Item -Path (Join-Path $realRuntimeModules 'workflow-manifest.ps1') -Destination $runtimeModulesDir -Force
+        Copy-Item -Path (Join-Path $realRuntimeModules 'ManifestCondition.psm1') -Destination $runtimeModulesDir -Force
+
+        # Re-initialize ProductAPI against the isolated kickstart test root
+        Initialize-ProductAPI -BotRoot $kickstartBotRoot -ControlDir $kickstartControl
+
+        # Helper: invoke the module-private Resolve-PhaseStatusFromOutputs
+        # directly. It's not exported so we use module-scope invocation.
+        $productApiModuleObj = Get-Module ProductAPI
+        $resolvePhaseStatus = {
+            param($Phase, $BotRoot)
+            Resolve-PhaseStatusFromOutputs -Phase $Phase -BotRoot $BotRoot
+        }
+
+        # ── Defect 2: script-phase probe (Resolve-PhaseStatusFromOutputs) ──
+
+        $scriptPhaseCommitTasks = [pscustomobject]@{
+            id = 'task-group-expansion'
+            name = 'Task Group Expansion'
+            type = 'script'
+            script = 'expand-task-groups.ps1'
+            commit = [pscustomobject]@{ paths = @('workspace/tasks/') }
+        }
+
+        # Case A: entirely empty pipeline dirs → pending (was: pending — same)
+        $statusEmpty = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: empty tasks/ → pending" `
+            -Expected "pending" -Actual $statusEmpty
+
+        # Case B: a task file in tasks/todo/ → completed
+        # (This is the #244 bug: before the fix, returned "pending" because
+        # Get-ChildItem -File on the tasks/ parent had no top-level files.)
+        Set-Content -Path (Join-Path $kickstartTasksDir 'todo/expanded-task-1.json') `
+            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
+        $statusWithTodo = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/todo/ → completed (#244 regression)" `
+            -Expected "completed" -Actual $statusWithTodo
+
+        # Case C: task only in tasks/done/ (workflow task moved through pipeline) → completed
+        Remove-Item (Join-Path $kickstartTasksDir 'todo/expanded-task-1.json') -Force
+        Set-Content -Path (Join-Path $kickstartTasksDir 'done/expanded-task-1.json') `
+            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
+        $statusWithDone = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/done/ → completed" `
+            -Expected "completed" -Actual $statusWithDone
+        Remove-Item (Join-Path $kickstartTasksDir 'done/expanded-task-1.json') -Force
+
+        # Case C2: task only in tasks/skipped/ → completed (pipeline-dir list
+        # must stay aligned with the outputs_dir branch, which also counts
+        # skipped + cancelled as evidence the phase ran).
+        Set-Content -Path (Join-Path $kickstartTasksDir 'skipped/expanded-task-s.json') `
+            -Value '{"id":"ts","name":"skipped"}' -Encoding UTF8
+        $statusWithSkipped = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/skipped/ → completed" `
+            -Expected "completed" -Actual $statusWithSkipped
+        Remove-Item (Join-Path $kickstartTasksDir 'skipped/expanded-task-s.json') -Force
+
+        # Case C3: task only in tasks/cancelled/ → completed
+        Set-Content -Path (Join-Path $kickstartTasksDir 'cancelled/expanded-task-c.json') `
+            -Value '{"id":"tc","name":"cancelled"}' -Encoding UTF8
+        $statusWithCancelled = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/cancelled/ → completed" `
+            -Expected "completed" -Actual $statusWithCancelled
+        Remove-Item (Join-Path $kickstartTasksDir 'cancelled/expanded-task-c.json') -Force
+
+        # Case C4: task only in tasks/needs-input/ → completed
+        # (Split/needs-input are legitimate pipeline statuses per
+        # workflow-manifest.ps1 Clear-WorkspaceTaskDirs — must be recognized.)
+        Set-Content -Path (Join-Path $kickstartTasksDir 'needs-input/expanded-task-n.json') `
+            -Value '{"id":"tn","name":"needs-input"}' -Encoding UTF8
+        $statusWithNeedsInput = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/needs-input/ → completed" `
+            -Expected "completed" -Actual $statusWithNeedsInput
+        Remove-Item (Join-Path $kickstartTasksDir 'needs-input/expanded-task-n.json') -Force
+
+        # Case C5: task only in tasks/split/ → completed
+        Set-Content -Path (Join-Path $kickstartTasksDir 'split/expanded-task-sp.json') `
+            -Value '{"id":"tsp","name":"split"}' -Encoding UTF8
+        $statusWithSplit = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: task in tasks/split/ → completed" `
+            -Expected "completed" -Actual $statusWithSplit
+        Remove-Item (Join-Path $kickstartTasksDir 'split/expanded-task-sp.json') -Force
+
+        # Case D: only .gitkeep sentinels in pipeline dirs → pending
+        # (Sentinels must not trip the probe — that would mask a never-ran state.)
+        Set-Content -Path (Join-Path $kickstartTasksDir 'todo/.gitkeep') -Value '' -Encoding UTF8
+        Set-Content -Path (Join-Path $kickstartTasksDir 'done/.gitkeep') -Value '' -Encoding UTF8
+        $statusOnlyGitkeep = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCommitTasks $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: only .gitkeep sentinels → pending" `
+            -Expected "pending" -Actual $statusOnlyGitkeep
+        Remove-Item (Join-Path $kickstartTasksDir 'todo/.gitkeep') -Force
+        Remove-Item (Join-Path $kickstartTasksDir 'done/.gitkeep') -Force
+
+        # Case E: general recursive case — a non-tasks commit path with
+        # committed files nested two levels deep. The old probe used a flat
+        # file count on the top-level dir and would have missed these.
+        $customDir = Join-Path $kickstartBotRoot 'workspace\custom\nested\deep'
+        New-Item -Path $customDir -ItemType Directory -Force | Out-Null
+        Set-Content -Path (Join-Path $customDir 'artifact.txt') -Value 'hello' -Encoding UTF8
+        $scriptPhaseCustom = [pscustomobject]@{
+            id = 'custom-phase'
+            name = 'Custom Phase'
+            type = 'script'
+            script = 'custom.ps1'
+            commit = [pscustomobject]@{ paths = @('workspace/custom/') }
+        }
+        $statusRecursive = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCustom $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: nested artifacts → completed (recursive general case)" `
+            -Expected "completed" -Actual $statusRecursive
+
+        # Case F: general recursive case with only .gitkeep → pending
+        Remove-Item (Join-Path $customDir 'artifact.txt') -Force
+        Set-Content -Path (Join-Path $customDir '.gitkeep') -Value '' -Encoding UTF8
+        $statusRecursiveGitkeep = & $productApiModuleObj $resolvePhaseStatus $scriptPhaseCustom $kickstartBotRoot
+        Assert-Equal -Name "Resolve-PhaseStatusFromOutputs: nested .gitkeep only → pending" `
+            -Expected "pending" -Actual $statusRecursiveGitkeep
+
+        # ── Integration: Get-KickstartStatus full-stack ──
+
+        # With a real task file and no process record, all four phases should
+        # report completed via filesystem inference (P1 + P3 working end-to-end).
+        Set-Content -Path (Join-Path $kickstartTasksDir 'todo/expanded-task-1.json') `
+            -Value '{"id":"t1","name":"test"}' -Encoding UTF8
+
+        $statusNoProc = Get-KickstartStatus
+        Assert-Equal -Name "Get-KickstartStatus: overall status with 4 complete phases (no proc)" `
+            -Expected "completed" -Actual $statusNoProc.status
+        $expansionPhase = $statusNoProc.phases | Where-Object { $_.id -eq 'task-group-expansion' }
+        Assert-Equal -Name "Get-KickstartStatus: expansion phase completed via filesystem inference" `
+            -Expected "completed" -Actual $expansionPhase.status
+        Assert-True -Name "Get-KickstartStatus: resume_from is null when all phases complete" `
+            -Condition ([string]::IsNullOrEmpty($statusNoProc.resume_from)) `
+            -Message "Expected resume_from null/empty, got '$($statusNoProc.resume_from)'"
+
+        # ── Defect 1: process-type filter (P2) ──
+
+        $procDir = Join-Path $kickstartControl 'processes'
+
+        # P2 positive: task-runner process with matching workflow_name IS picked up.
+        # This case requires a real YAML manifest so that $workflowName gets
+        # populated inside Get-KickstartStatus (the legacy settings.default.json
+        # fallback leaves workflowName null, which would short-circuit the match).
+        # Skip if powershell-yaml is unavailable in the test environment.
+        $haveYamlModule = $null -ne (Get-Module -ListAvailable powershell-yaml -ErrorAction SilentlyContinue)
+        if ($haveYamlModule) {
+            $manifestDir = Join-Path $kickstartBotRoot "workflows\kickstart-from-scratch"
+            New-Item -Path $manifestDir -ItemType Directory -Force | Out-Null
+            $manifestYaml = @'
+name: kickstart-from-scratch
+version: "1.0"
+description: Test manifest for #244 regression
+tasks:
+  - name: "Product Documents"
+    id: product-documents
+    type: prompt
+    outputs: ["mission.md", "tech-stack.md", "entity-model.md"]
+  - name: "Generate Decisions"
+    id: generate-decisions
+    type: prompt
+    outputs_dir: "decisions"
+    min_output_count: 1
+  - name: "Task Groups"
+    id: task-groups
+    type: prompt
+    outputs: ["task-groups.json"]
+  - name: "Task Group Expansion"
+    id: task-group-expansion
+    type: script
+    script: "expand-task-groups.ps1"
+    outputs_dir: "tasks/todo"
+    min_output_count: 1
+    commit:
+      paths: ["workspace/tasks/"]
+'@
+            Set-Content -Path (Join-Path $manifestDir 'workflow.yaml') -Value $manifestYaml -Encoding UTF8
+
+            $matchingProc = @{
+                id = 'proc-test-match'
+                type = 'task-runner'
+                workflow_name = 'kickstart-from-scratch'
+                status = 'completed'
+                phases = @()
+            } | ConvertTo-Json -Depth 4
+            Set-Content -Path (Join-Path $procDir 'proc-test-match.json') -Value $matchingProc -Encoding UTF8
+            $statusMatch = Get-KickstartStatus
+            Assert-Equal -Name "Get-KickstartStatus P2: task-runner proc with matching workflow_name → process_id populated" `
+                -Expected 'proc-test-match' -Actual $statusMatch.process_id
+            Assert-Equal -Name "Get-KickstartStatus P2: workflow_name surfaced in response" `
+                -Expected 'kickstart-from-scratch' -Actual $statusMatch.workflow_name
+            Remove-Item (Join-Path $procDir 'proc-test-match.json') -Force
+            # Leave the manifest in place for the remaining P2 tests.
+        } else {
+            Write-TestResult -Name "Get-KickstartStatus P2: task-runner proc with matching workflow_name" `
+                -Status Skip -Message "powershell-yaml module not available"
+        }
+
+        # P2 regression: task-runner process with DIFFERENT workflow_name is ignored
+        $otherProc = @{
+            id = 'proc-test-other'
+            type = 'task-runner'
+            workflow_name = 'some-other-workflow'
+            status = 'completed'
+            phases = @()
+        } | ConvertTo-Json -Depth 4
+        Set-Content -Path (Join-Path $procDir 'proc-test-other.json') -Value $otherProc -Encoding UTF8
+        $statusOther = Get-KickstartStatus
+        Assert-True -Name "Get-KickstartStatus P2: task-runner proc with non-matching workflow_name → process_id null" `
+            -Condition ([string]::IsNullOrEmpty($statusOther.process_id)) `
+            -Message "Expected null process_id, got '$($statusOther.process_id)'"
+        Remove-Item (Join-Path $procDir 'proc-test-other.json') -Force
+
+        # P2 compatibility: type=kickstart still works (back-compat)
+        $legacyProc = @{
+            id = 'proc-test-legacy'
+            type = 'kickstart'
+            status = 'completed'
+            phases = @()
+        } | ConvertTo-Json -Depth 4
+        Set-Content -Path (Join-Path $procDir 'proc-test-legacy.json') -Value $legacyProc -Encoding UTF8
+        $statusLegacy = Get-KickstartStatus
+        Assert-Equal -Name "Get-KickstartStatus P2: legacy type=kickstart proc still matched" `
+            -Expected 'proc-test-legacy' -Actual $statusLegacy.process_id
+        Remove-Item (Join-Path $procDir 'proc-test-legacy.json') -Force
+
+        # Cleanup isolated kickstart test root
+        if (Test-Path $kickstartTestRoot) {
+            Remove-Item $kickstartTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
     } finally {
         Remove-TestProject -Path $productApiTestProject
         Remove-Module ProductAPI -ErrorAction SilentlyContinue
+        if ($kickstartTestRoot -and (Test-Path $kickstartTestRoot)) {
+            Remove-Item $kickstartTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 } else {
     Write-TestResult -Name "ProductAPI direct tests" -Status Skip -Message "Module not found at $productApiModule"
@@ -3743,6 +4052,342 @@ if (Test-Path $dotBotLogModule) {
     }
 } else {
     Write-TestResult -Name "DotBotLog module tests" -Status Skip -Message "Module not found at $dotBotLogModule"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# INBOX WATCHER MODULE TESTS
+# ═══════════════════════════════════════════════════════════════════
+Write-Host ""
+Write-Host "--- InboxWatcher Module ---" -ForegroundColor Cyan
+
+$inboxWatcherModule = Join-Path $botDir "systems\ui\modules\InboxWatcher.psm1"
+
+if (Test-Path $inboxWatcherModule) {
+    # DotBotLog may have been removed by the preceding DotBotLog test section — re-import it
+    if (-not (Get-Module DotBotLog)) {
+        if (Test-Path $dotBotLogModule) { Import-Module $dotBotLogModule -Force }
+    }
+
+    $inboxTestRoot = Join-Path ([IO.Path]::GetTempPath()) "inbox-watcher-test-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+    try {
+        # ── Scaffolding ──────────────────────────────────────────────────
+        $inboxBotRoot  = Join-Path $inboxTestRoot ".bot"
+        $settingsDir   = Join-Path $inboxBotRoot "settings"
+        $controlDir    = Join-Path $inboxBotRoot ".control"
+        $inboxFolder   = Join-Path $inboxBotRoot "workspace" "inbox"
+        $logPath       = Join-Path $controlDir "logs" "inbox-watcher.log"
+
+        foreach ($dir in @($settingsDir, $controlDir, $inboxFolder)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+
+        $defaultSettingsPath  = Join-Path $settingsDir "settings.default.json"
+        $overrideSettingsPath = Join-Path $controlDir "settings.json"
+
+        function Write-InboxSettings {
+            param([object]$Config)
+            $Config | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $defaultSettingsPath -Encoding UTF8
+        }
+
+        function Reset-InboxWatcher {
+            try { Stop-InboxWatcher } catch {}
+            Remove-Module InboxWatcher -ErrorAction SilentlyContinue
+            Import-Module $inboxWatcherModule -Force
+        }
+
+        # Test 1. Config guard-rails — missing file, disabled, empty watchers, malformed JSON ─
+        # None of these reach initialization so $Initialized never flips; one Reset at the end suffices.
+        Import-Module $inboxWatcherModule -Force
+
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Guard-rail: no-op when settings file is missing" -Condition (-not $threw)
+
+        Write-InboxSettings @{ file_listener = @{ enabled = $false; watchers = @() } }
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Guard-rail: no-op when file_listener is disabled" -Condition (-not $threw)
+
+        Write-InboxSettings @{ file_listener = @{ enabled = $true; watchers = @() } }
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Guard-rail: no-op when watchers list is empty" -Condition (-not $threw)
+
+        "{ not valid json" | Set-Content -LiteralPath $defaultSettingsPath -Encoding UTF8
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Guard-rail: no-op on malformed settings JSON" -Condition (-not $threw)
+
+        Reset-InboxWatcher
+
+        # Test 2. Override resilience — invalid override falls back; valid override replaces defaults ─
+        Write-InboxSettings @{ file_listener = @{ enabled = $false; watchers = @() } }
+        "{ bad" | Set-Content -LiteralPath $overrideSettingsPath -Encoding UTF8
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Override: invalid .control/settings.json falls back to defaults without throw" `
+            -Condition (-not $threw)
+        Remove-Item -LiteralPath $overrideSettingsPath -ErrorAction SilentlyContinue
+        Reset-InboxWatcher
+
+        Write-InboxSettings @{ file_listener = @{ enabled = $false; watchers = @() } }
+        @{ file_listener = @{ enabled = $true; watchers = @() } } |
+            ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $overrideSettingsPath -Encoding UTF8
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Override: valid .control/settings.json overrides disabled default without throw" `
+            -Condition (-not $threw)
+        Remove-Item -LiteralPath $overrideSettingsPath -ErrorAction SilentlyContinue
+        Reset-InboxWatcher
+
+        # Test 3. Path security — rooted path and path traversal both rejected silently ─────────
+        $rootedPath = if ($IsWindows) { 'C:\Windows' } else { '/etc' }
+        Write-InboxSettings @{
+            file_listener = @{
+                enabled  = $true
+                watchers = @(
+                    @{ folder = $rootedPath; events = @('created') }
+                    @{ folder = '../../etc'; events = @('created') }
+                )
+            }
+        }
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Security: rooted path and path-traversal folder both rejected without throw" `
+            -Condition (-not $threw)
+        Reset-InboxWatcher
+
+        # Test 4. Folder & event validation — nonexistent folder skipped; unknown event warned ──
+        Write-InboxSettings @{
+            file_listener = @{
+                enabled  = $true
+                watchers = @(
+                    @{ folder = 'does-not-exist'; events = @('created') }
+                    @{ folder = 'inbox';          events = @('create')  }   # typo: 'create' not 'created'
+                )
+            }
+        }
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Validation: nonexistent folder and unknown event type both skip without throw" `
+            -Condition (-not $threw)
+        Reset-InboxWatcher
+
+        # Test 5. Config defaults — non-numeric max_concurrent and coalesce_window fall back ─────
+        Write-InboxSettings @{
+            file_listener = @{
+                enabled                 = $true
+                max_concurrent          = "bad"
+                coalesce_window_seconds = "bad"
+                watchers                = @(@{ folder = 'inbox'; events = @('created') })
+            }
+        }
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Defaults: non-numeric max_concurrent and coalesce_window fall back without throw" `
+            -Condition (-not $threw)
+        Reset-InboxWatcher
+
+        # Test 6. Worker startup — valid config spawns worker, creates log, writes startup entry ─
+        if (Test-Path -LiteralPath $logPath) { Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue }
+        Write-InboxSettings @{
+            file_listener = @{
+                enabled  = $true
+                watchers = @(@{ folder = 'inbox'; events = @('created') })
+            }
+        }
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Startup: worker starts for valid config without throw" -Condition (-not $threw)
+
+        Start-Sleep -Milliseconds 600   # let worker runspace write its startup log entry
+        Assert-True -Name "Startup: log file created by worker runspace" `
+            -Condition (Test-Path -LiteralPath $logPath)
+        if (Test-Path -LiteralPath $logPath) {
+            $startupLog = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
+            Assert-True -Name "Startup: log contains 'Worker started' message" `
+                -Condition ($startupLog -match 'Worker started') `
+                -Message "Expected 'Worker started' in log"
+        }
+
+        # Test 7. Lifecycle — re-entrancy guard, stop cleans up, re-init after stop ─────────────
+        # Continues with the running worker from Test 6; no reset needed.
+        $linesBefore = @(Get-Content -LiteralPath $logPath -ErrorAction SilentlyContinue).Count
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Start-Sleep -Milliseconds 300
+        $linesAfter = @(Get-Content -LiteralPath $logPath -ErrorAction SilentlyContinue).Count
+        Assert-True -Name "Lifecycle: re-entrancy guard — second init spawns no additional workers" `
+            -Condition ($linesAfter -eq $linesBefore) `
+            -Message "Log grew after 2nd init: before=$linesBefore after=$linesAfter"
+
+        $threw = $false
+        try { Stop-InboxWatcher } catch { $threw = $true }
+        Assert-True -Name "Lifecycle: Stop-InboxWatcher cleans up without throw" -Condition (-not $threw)
+
+        $threw = $false
+        try { Initialize-InboxWatcher -BotRoot $inboxBotRoot } catch { $threw = $true }
+        Assert-True -Name "Lifecycle: re-init after stop succeeds (Initialized flag reset)" -Condition (-not $threw)
+        Stop-InboxWatcher
+
+        # ═══════════════════════════════════════════════════════════════
+        # Behavioral tests — stub launcher satisfies the Test-Path guard
+        # without needing a real dotbot install.
+        # ═══════════════════════════════════════════════════════════════
+        $stubLauncherDir = Join-Path $inboxBotRoot "systems" "runtime"
+        $null = New-Item -ItemType Directory -Force -Path $stubLauncherDir
+        "# test stub — exits immediately" |
+            Set-Content -LiteralPath (Join-Path $stubLauncherDir "launch-process.ps1") -Encoding UTF8
+
+        $launchersDir = Join-Path $controlDir "launchers"
+
+        function Get-NewLog {
+            param([int]$After = 0)
+            if (-not (Test-Path -LiteralPath $logPath)) { return '' }
+            $lines = Get-Content -LiteralPath $logPath -ErrorAction SilentlyContinue
+            if ($null -eq $lines -or $After -ge $lines.Count) { return '' }
+            ($lines[$After..($lines.Count - 1)]) -join "`n"
+        }
+        function Get-LogLineCount {
+            if (-not (Test-Path -LiteralPath $logPath)) { return 0 }
+            @(Get-Content -LiteralPath $logPath -ErrorAction SilentlyContinue).Count
+        }
+
+        $behavSettings = @{
+            file_listener = @{
+                enabled                 = $true
+                coalesce_window_seconds = 1
+                watchers                = @(@{ folder = 'inbox'; events = @('created') })
+            }
+        }
+
+        # Test 8. File detection + launcher creation ──────────────────────────────────────────
+        # Worst-case timing: 2s WaitForChanged timeout + 1s coalesce + 2s next timeout + 2s buffer = 7s
+        Write-InboxSettings $behavSettings
+        Reset-InboxWatcher
+        Initialize-InboxWatcher -BotRoot $inboxBotRoot
+        Start-Sleep -Milliseconds 600   # let runspace reach WaitForChanged before dropping file
+        $mark8 = Get-LogLineCount
+
+        'hello' | Set-Content -LiteralPath (Join-Path $inboxFolder "detect-test.txt") -Encoding UTF8
+        Start-Sleep -Seconds 7
+
+        $log8 = Get-NewLog -After $mark8
+        Assert-True -Name "Detection: worker detects and queues a newly created file" `
+            -Condition ($log8 -match 'Queued.*detect-test\.txt') `
+            -Message "Expected 'Queued.*detect-test.txt'; log: $log8"
+        Assert-True -Name "Detection: task-creation launched after coalesce window" `
+            -Condition ($log8 -match 'Launched:') `
+            -Message "Expected 'Launched:' in log; got: $log8"
+        $launchers8 = @(Get-ChildItem -Path $launchersDir -Filter "inbox-launcher-*.ps1" -File -ErrorAction SilentlyContinue)
+        Assert-True -Name "Detection: inbox-launcher-*.ps1 wrapper created in .control/launchers/" `
+            -Condition ($launchers8.Count -gt 0) `
+            -Message "Expected inbox-launcher-*.ps1 in $launchersDir"
+        if ($launchers8.Count -gt 0) {
+            $wc8 = Get-Content -LiteralPath $launchers8[0].FullName -Raw -ErrorAction SilentlyContinue
+            Assert-True -Name "Detection: launcher wrapper invokes launch-process.ps1 with -Type task-creation" `
+                -Condition ($wc8 -match 'launch-process\.ps1' -and $wc8 -match 'task-creation') `
+                -Message "Wrapper missing launch-process.ps1 or task-creation; content: $wc8"
+        }
+        Stop-InboxWatcher
+        Get-ChildItem -Path $launchersDir -Filter "inbox-*" -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+
+        # Test 9. Debounce + coalescing — shared watcher, two sequential sub-scenarios ──────────
+        Write-InboxSettings @{
+            file_listener = @{
+                enabled                 = $true
+                coalesce_window_seconds = 1
+                watchers                = @(@{ folder = 'inbox'; events = @('created', 'updated') })
+            }
+        }
+        Reset-InboxWatcher
+        Initialize-InboxWatcher -BotRoot $inboxBotRoot
+        Start-Sleep -Milliseconds 600
+
+        # Sub-case A: same file touched twice within 5 s → only one Queued entry (debounced)
+        $mark9a = Get-LogLineCount
+        $debounceFile = Join-Path $inboxFolder "dedup.txt"
+        'v1' | Set-Content -LiteralPath $debounceFile -Encoding UTF8    # first event — queued
+        Start-Sleep -Milliseconds 800                                    # well within 5 s debounce window
+        'v2' | Set-Content -LiteralPath $debounceFile -Encoding UTF8    # second event — debounced
+        Start-Sleep -Seconds 7
+        $log9a = Get-NewLog -After $mark9a
+        Assert-True -Name "Debounce: same file touched twice within 5 s produces only one Queued entry" `
+            -Condition (([regex]::Matches($log9a, 'Queued.*dedup\.txt')).Count -eq 1) `
+            -Message "Expected 1 Queued entry for dedup.txt; log: $log9a"
+
+        # Sub-case B: three files in quick succession → single batch launch for all three
+        Get-ChildItem -Path $launchersDir -Filter "inbox-*" -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+        $mark9b = Get-LogLineCount
+        'a' | Set-Content -LiteralPath (Join-Path $inboxFolder "batch-a.txt") -Encoding UTF8
+        Start-Sleep -Milliseconds 200
+        'b' | Set-Content -LiteralPath (Join-Path $inboxFolder "batch-b.txt") -Encoding UTF8
+        Start-Sleep -Milliseconds 200
+        'c' | Set-Content -LiteralPath (Join-Path $inboxFolder "batch-c.txt") -Encoding UTF8
+        Start-Sleep -Seconds 7
+        $log9b = Get-NewLog -After $mark9b
+        Assert-True -Name "Coalescing: three quick files trigger a single batch launch" `
+            -Condition (([regex]::Matches($log9b, 'Launching task-creation')).Count -eq 1) `
+            -Message "Expected 1 batch launch; log: $log9b"
+        Assert-True -Name "Coalescing: batch launch reports all three files" `
+            -Condition ($log9b -match 'Launching task-creation for 3 file') `
+            -Message "Expected 'for 3 file' in launch log; got: $log9b"
+
+        Stop-InboxWatcher
+        Get-ChildItem -Path $launchersDir -Filter "inbox-*" -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+
+        # Test 10. Filename sanitization + stop boundary ──────────────────────────────────────
+        Write-InboxSettings $behavSettings
+        Reset-InboxWatcher
+        Initialize-InboxWatcher -BotRoot $inboxBotRoot
+        Start-Sleep -Milliseconds 600
+
+        # Sub-case A: backtick and dollar in filename are replaced with underscore in wrapper
+        $mark10a = Get-LogLineCount
+        $unsafeFile = Join-Path $inboxFolder 'test`$name.txt'
+        'payload' | Set-Content -LiteralPath $unsafeFile -Encoding UTF8
+        Start-Sleep -Seconds 7
+        $log10a = Get-NewLog -After $mark10a
+        Assert-True -Name "Sanitization: file with backtick and dollar is detected and queued" `
+            -Condition ($log10a -match 'Queued') `
+            -Message "Expected file to be detected; log: $log10a"
+        $wrappers10 = @(Get-ChildItem -Path $launchersDir -Filter "inbox-launcher-*.ps1" -File -ErrorAction SilentlyContinue)
+        if ($wrappers10.Count -gt 0) {
+            $wc10 = Get-Content -LiteralPath $wrappers10[0].FullName -Raw -ErrorAction SilentlyContinue
+            Assert-True -Name "Sanitization: wrapper replaces backtick and dollar with underscore" `
+                -Condition ($wc10 -match 'test__name\.txt') `
+                -Message "Expected 'test__name.txt' in wrapper; got: $wc10"
+        } else {
+            Write-TestResult -Name "Sanitization: wrapper replaces backtick and dollar with underscore" `
+                -Status Skip -Message "No launcher wrapper found (file detection may have failed)"
+        }
+
+        # Sub-case B: no worker activity after Stop-InboxWatcher
+        Stop-InboxWatcher
+        Start-Sleep -Milliseconds 400   # let runspace fully exit
+        $mark10b = Get-LogLineCount
+        'payload' | Set-Content -LiteralPath (Join-Path $inboxFolder "after-stop.txt") -Encoding UTF8
+        Start-Sleep -Seconds 6
+        $log10b = Get-NewLog -After $mark10b
+        Assert-True -Name "Stop boundary: no file events logged after Stop-InboxWatcher" `
+            -Condition (-not ($log10b -match 'Queued|Launching')) `
+            -Message "Worker still active after stop; new log: $log10b"
+
+        Get-ChildItem -Path $launchersDir -Filter "inbox-*" -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+
+    } finally {
+        try { Stop-InboxWatcher } catch {}
+        Remove-Module InboxWatcher -ErrorAction SilentlyContinue
+        if ($inboxTestRoot -and (Test-Path $inboxTestRoot)) {
+            Remove-Item $inboxTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+} else {
+    Write-TestResult -Name "InboxWatcher module exists" -Status Skip -Message "Module not found at $inboxWatcherModule"
 }
 
 # ═══════════════════════════════════════════════════════════════════

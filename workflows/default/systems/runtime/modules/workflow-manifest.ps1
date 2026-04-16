@@ -171,8 +171,13 @@ function Convert-ManifestRequiresToPreflightChecks {
     return $checks
 }
 
-# Test-ManifestCondition lives in its own module for controlled exports.
-Import-Module (Join-Path $PSScriptRoot "ManifestCondition.psm1") -Force -DisableNameChecking
+# Import with -Global so Test-ManifestCondition is visible to callers that
+# dot-source workflow-manifest.ps1 from inside a function/scriptblock scope
+# (e.g. server.ps1 and task-get-next/script.ps1). Without -Global, the
+# imported function ends up in a module scope that is not reached by the
+# lookup chain at some HTTP route handler call sites, producing intermittent
+# "The term 'Test-ManifestCondition' is not recognized" errors.
+Import-Module (Join-Path $PSScriptRoot "ManifestCondition.psm1") -Force -DisableNameChecking -Global
 
 function Ensure-ManifestTaskIds {
     <#
@@ -274,6 +279,16 @@ function New-WorkflowTask {
     $mcpTool     = $TaskDef['mcp_tool']
     $mcpArgs     = $TaskDef['mcp_args']
 
+    # task_gen with a 'workflow' prompt file but no script_path → prompt_template
+    # workflow.yaml uses  type: task_gen + workflow: "02a-foo.md"  to mean
+    # "run Claude with this prompt to generate tasks". Map it to prompt_template
+    # so the task-runner dispatches it correctly via the LLM path.
+    $promptFromWorkflow = $null
+    if ($type -eq 'task_gen' -and -not $scriptPath -and $TaskDef['workflow'] -and $TaskDef['workflow'] -match '\.md$') {
+        $type              = 'prompt_template'
+        $promptFromWorkflow = "recipes/prompts/$($TaskDef['workflow'])"
+    }
+
     # Dependencies: convert from manifest format (string names)
     $deps = @()
     if ($TaskDef['depends_on']) { $deps = @($TaskDef['depends_on']) }
@@ -303,6 +318,7 @@ function New-WorkflowTask {
 
     # Optional fields — only set if declared (keeps task JSON clean)
     if ($scriptPath)                           { $task["script_path"] = $scriptPath }
+    if ($promptFromWorkflow)                   { $task["prompt"] = $promptFromWorkflow }
     if ($mcpTool)                              { $task["mcp_tool"] = $mcpTool }
     if ($mcpArgs -and $mcpArgs.Count -gt 0)    { $task["mcp_args"] = $mcpArgs }
     if ($TaskDef['acceptance_criteria'])        { $task["acceptance_criteria"] = @($TaskDef['acceptance_criteria']) }
