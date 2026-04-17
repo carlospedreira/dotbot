@@ -60,14 +60,14 @@ Install-Module Dotbot -Scope CurrentUser
 ```
 
 <details>
-<summary><strong>Alternative install methods</strong></summary>
+<summary><strong>Alternative install methods</strong> (CI/CD pipelines, contributors, or environments without PowerShellGet)</summary>
 
-**One-liner:**
+**One-liner (CI/CD, scripts):**
 ```powershell
 irm https://raw.githubusercontent.com/andresharpe/dotbot/main/install-remote.ps1 | iex
 ```
 
-**Git clone:**
+**Git clone (contributors):**
 ```powershell
 cd ~
 git clone https://github.com/andresharpe/dotbot dotbot-install
